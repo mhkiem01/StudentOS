@@ -1,0 +1,32 @@
+const assert=require('node:assert/strict');
+module.exports=async(js,call)=>{
+ const wait=async q=>{for(let i=0;i<130;i++){if(await js(q))return;await new Promise(r=>setTimeout(r,100))}throw Error('Marketplace timeout: '+q+' '+await js("document.querySelector('.mk-dialog .mk-error')?.textContent||''"))};
+ const click=a=>js(`document.querySelector('.marketplace-view.active [data-mk="${a}"]').click()`);
+ const submit=async values=>{await js(`(()=>{const f=document.querySelector('.mk-dialog form');for(const [k,v] of Object.entries(${JSON.stringify(values)})){const el=f.elements[k];if(el.type==='checkbox')el.checked=v;else el.value=v}f.requestSubmit()})()`);await wait("!document.querySelector('.mk-dialog').open")};
+ await call('Emulation.setDeviceMetricsOverride',{width:1600,height:1000,deviceScaleFactor:1,mobile:false});
+ await js("showView('marketplace-notes')");await wait("!!document.querySelector('#mkFilters')");
+ assert.equal(await js("document.querySelectorAll('.mk-listing').length"),0);
+ await click('sell');await wait("!!document.querySelector('.mk-dialog [name=source_note]')");
+ const source=await js("document.querySelector('.mk-dialog [name=source_note] option:nth-child(2)')?.value");assert(source,'Fixture needs an existing Portal note');
+ await submit({title:'Browser Marketplace Notes',subject:'COMP1521',description:'Temporary browser test listing',source:'portal',source_note:source,preview:'Only this public preview is visible.',rights:true,status:'published',price:'8.00'});
+ await wait("document.querySelector('.mk-listing')?.textContent.includes('Browser Marketplace Notes')");
+ assert(await js("document.querySelector('.mk-paper').textContent.includes('Only this public preview')"));
+ await js("document.querySelector('#mkSearch').value='no matches';document.querySelector('#mkSearch').dispatchEvent(new Event('input'))");
+ assert(await js("document.querySelector('.mk-results').textContent.includes('No notes found')"));
+ await js("document.querySelector('#mkSearch').value='COMP1521';document.querySelector('#mkSearch').dispatchEvent(new Event('input'))");assert.equal(await js("document.querySelectorAll('.mk-listing').length"),1);
+ await click('pane-dashboard');assert(await js("document.querySelector('#mkBody').textContent.includes('Recorded earnings')"));
+ await click('edit-listing');await wait("!!document.querySelector('.mk-dialog [name=price]')");await submit({price:'0',rights:true});
+ await click('go-tutors');await wait("!!document.querySelector('#mkFilters [name=method]')");await click('onboard');
+ await submit({tagline:'Patient coding support',subjects:'COMP1521, COMP2511',bio:'Browser test tutor',price:'45',timezone:'UTC','start-0':'09:00','end-0':'17:00',terms:true});
+ await wait("!!document.querySelector('.mk-tutor-card')");await click('pane-dashboard');assert(await js("document.querySelector('#mkBody').textContent.includes('Bookings & past sessions')"));
+ await click('pane-browse');await click('go-notes');await wait("!!document.querySelector('.mk-listing')");
+ const capture=async name=>{const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});require('node:fs').writeFileSync(require('node:path').join(require('node:os').tmpdir(),name),Buffer.from(shot.data,'base64'))};
+ await js("document.body.classList.add('dark')");await capture('portal-marketplace-desktop.png');
+ for(const width of [320,390,744]){await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:true});for(const dark of [true,false]){await js(`document.body.classList.toggle('dark',${dark})`);assert(await js('document.documentElement.scrollWidth<=innerWidth'),'Marketplace overflow '+width)}}
+ await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await click('filters');await wait("document.querySelector('.mk-dialog').open");
+ await js("const f=document.querySelector('.mk-dialog form');f.elements.subject.value='COMP1521';f.requestSubmit()");await wait("!document.querySelector('.mk-dialog').open");
+ await click('detail');await wait("document.querySelector('.mk-dialog').open");assert(await js("document.querySelector('.mk-dialog').getBoundingClientRect().right<=innerWidth"));await js("document.querySelector('.mk-dialog [data-mk=close]').click()");
+ await capture('portal-marketplace-mobile.png');
+ await click('go-tutors');await wait("!!document.querySelector('.mk-tutor-card')");assert(await js('document.documentElement.scrollWidth<=innerWidth'));
+ console.log('PASS Marketplace: empty real-data state, own-note snapshot, publication, search, seller dashboard, tutor signup/availability, mobile filters/details, light/dark and no overflow.');
+};

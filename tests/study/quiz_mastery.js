@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const m=require('../../frontend/study/quiz-mastery.js');
+const q={question:'Example?',choices:{A:'Yes',B:'No'},answer:'A'};
+assert.equal(m.count(q),0);
+m.record(q,true);m.record(q,false);assert.equal(m.count(q),1);
+m.record(q,true);assert.equal(m.count(q),2);
+const persisted=JSON.parse(JSON.stringify(q));assert.equal(m.count(persisted),2);
+persisted.question='Edited question';assert.equal(m.count(persisted),0);
+assert.deepEqual(m.settings({mode:'mastery',target:5}),{mode:'mastery',target:5});
+assert.equal(m.settings({target:0}).target,3);
+assert.equal(m.settings({target:999}).target,100);
+assert.equal(m.settings(null).mode,'normal');
+console.log('PASS mastery rules: cumulative correct answers, wrong-answer preservation, JSON persistence, edit reset, target limits, normal default.');

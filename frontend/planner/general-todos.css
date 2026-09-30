@@ -1,0 +1,32 @@
+/* Keep the original two cards as inert sizing placeholders. The replacement
+   fills precisely their existing slot without changing the dashboard grid. */
+.has-general-todos{position:relative}
+.has-general-todos>.todo-original-card{visibility:hidden;pointer-events:none}
+.dash-actions-column>.general-todo-card{position:absolute;inset:0;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.todo-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none}
+.todo-heading h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}
+.todo-heading h3 span{color:var(--primary);font-size:23px}
+.todo-list{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.general-todo-row .reminder-detail b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.general-todo-row.todo-completed .reminder-detail{opacity:.7}
+.general-todo-row .status-badge{flex-shrink:0}
+.todo-quick{display:flex;gap:7px;flex:none;margin:0}
+.todo-quick input{flex:1;min-width:0;width:0;border:1px solid var(--line);border-radius:7px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;padding:9px}
+.todo-quick button,.todo-primary{border:1px solid var(--primary);background:linear-gradient(135deg,#9879fa,var(--primary));color:white;border-radius:7px;min-width:36px;min-height:36px;font-size:23px}
+.todo-feedback{margin:0;font-size:11px;color:var(--muted);flex:none;overflow-wrap:anywhere}
+.todo-feedback:empty{display:none}
+.todo-empty{font-size:12px;color:var(--muted);padding:10px 0;line-height:1.6}
+.todo-empty small{display:block}
+.todo-dialog{box-sizing:border-box;width:min(720px,calc(100vw - 28px));max-height:85dvh;padding:20px;border:1px solid var(--line);border-radius:16px;color:var(--text);background:var(--panel);box-shadow:0 20px 80px #0005;overflow:auto}
+.todo-dialog::backdrop{background:#100d2b88;backdrop-filter:blur(3px)}
+.todo-dialog h2{font-size:20px;margin:0}
+.todo-dialog button:not(.reminder-circle),.todo-dialog input,.todo-dialog select,.todo-dialog textarea{font:inherit;border:1px solid var(--line);border-radius:7px;padding:9px;background:var(--panel2);color:var(--text);min-width:0;box-sizing:border-box}
+.todo-dialog .todo-primary,.todo-dialog .todo-quick button{background:var(--primary);color:white}
+.todo-dialog .todo-description{color:var(--muted);font-size:12px}
+.todo-manager[open]{display:flex;flex-direction:column;gap:12px;height:min(640px,85dvh)}
+.todo-filters{display:flex;gap:8px;flex-wrap:wrap}.todo-filters input{flex:1;min-width:120px}
+.todo-dialog .status-no_progress{background:#ffe9ef;color:#d33c61}.todo-dialog .status-in_progress{background:#fff4d8;color:#ac6600}.todo-dialog .status-done{background:#e4f8e9;color:#21864b}
+.todo-dialog .reminder-detail{border:0!important;background:none!important;padding:0!important;text-align:left}
+.todo-editor{width:min(460px,calc(100vw - 28px))}.todo-editor form{display:grid;gap:12px;margin-top:16px}.todo-editor label{display:grid;gap:6px;font-size:12px}.todo-editor input,.todo-editor textarea,.todo-editor select{width:100%}.todo-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.todo-editor footer{display:flex;gap:8px}
+.general-todo-settings{margin-top:14px}.general-todo-settings h3{margin:0 0 16px}.general-todo-settings h4{margin:0}
+@media(max-width:700px){.todo-quick input{font-size:16px}.todo-quick button{min-width:44px;min-height:44px}.general-todo-card .todo-heading h3{font-size:15px}.todo-dialog{padding:14px}.todo-dialog input,.todo-dialog select,.todo-dialog textarea{font-size:16px}.todo-dialog button{min-height:44px}.todo-dialog .reminder-circle{min-width:28px;min-height:28px}.todo-filters>*{flex:1}.general-todo-settings .gym-module-row{flex-wrap:wrap}}

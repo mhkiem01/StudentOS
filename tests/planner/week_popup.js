@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict');
+require('../../frontend/planner/calendar.js');require('../../frontend/planner/week-popup.js');
+const {lanes,segments}=globalThis.StudentWeekPopup,C=globalThis.StudentCalendar;
+const overlaps=lanes([{start:960,end:1080},{start:990,end:1290},{start:1080,end:1200},{start:1320,end:1410}]);
+assert.deepEqual(overlaps.map(x=>[x.lane,x.lanes]),[[0,2],[1,2],[0,2],[0,1]]);
+assert.equal(lanes([{start:10,end:20},{start:20,end:30}])[1].lanes,1);
+const overnight={id:'night',title:'Overnight',event_date:'2026-09-20',recurrence:'none',start_time:'23:00',end_time:'01:00'};
+assert.deepEqual(segments([overnight],C.date('2026-09-20')).map(x=>[x.start,x.end]),[[1380,1440]]);
+assert.deepEqual(segments([overnight],C.date('2026-09-21')).map(x=>[x.start,x.end,x.occurrence]),[[0,60,'2026-09-20']]);
+assert.equal(segments([{...overnight,start_time:'16:15',end_time:'21:45'}],C.date('2026-09-20'))[0].start,975);
+assert.equal(segments([overnight],C.date('2026-09-22')).length,0);
+console.log('PASS detailed week: overlap lanes, touching endpoints, quarter-hour positioning, midnight splitting.');
