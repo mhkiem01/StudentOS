@@ -1,0 +1,36 @@
+const assert=require('node:assert/strict');
+module.exports=async(js,call)=>{
+ const wait=async q=>{for(let i=0;i<120;i++){if(await js(q))return;await new Promise(r=>setTimeout(r,100))}throw Error('Socialise timeout: '+q)};
+ const click=a=>js(`document.querySelector('.social-view.active [data-social="${a}"]').click()`);
+ const submit=async values=>{await js(`(()=>{const f=document.querySelector('.soc-dialog form');for(const [k,v] of Object.entries(${JSON.stringify(values)})){const el=f.elements[k];if(el.type==='checkbox')el.checked=v;else el.value=v}f.requestSubmit()})()`);try{await wait("!document.querySelector('.soc-dialog').open")}catch(e){throw Error(e.message+' '+await js("document.querySelector('.soc-error').textContent"))}};
+ await call('Emulation.setDeviceMetricsOverride',{width:1500,height:1000,deviceScaleFactor:1,mobile:false});
+ await js("showView('settings')");await wait("!!document.querySelector('#socialEnabled')&&!document.querySelector('#socialEnabled').disabled");
+ assert(await js("document.querySelector('#socialNav').hidden"));
+ await js("document.querySelector('#socialEnabled').click()");await wait("!document.querySelector('#socialNav').hidden");
+ await js("showView('social-home')");await wait("!!document.querySelector('.soc-features')");
+ assert.equal(await js("document.querySelectorAll('.soc-post').length"),0);
+ await js("showView('social-projects')");await wait("!!document.querySelector('.social-view.active [data-social=new-project]')");
+ await click('new-project');await submit({name:'Browser Collaboration Project',subject:'COMP1521',description:'A real temporary test project',type:'assignment'});
+ await wait("document.querySelector('.soc-project-detail')?.textContent.includes('Browser Collaboration Project')");
+ await click('new-task');await submit({title:'Build feature',status:'in_progress',checklist:'Research\n[x] Plan',due:'2026-01-01T10:00'});
+ await wait("!!document.querySelector('.soc-task')");assert(await js("document.querySelector('.soc-task').classList.contains('overdue')"));
+ await js("document.querySelector('[data-task-status]').value='done';document.querySelector('[data-task-status]').dispatchEvent(new Event('change'))");
+ await wait("document.querySelector('.soc-project-overview').textContent.includes('100%')");
+ await click('space-meeting');await submit({title:'Planning call',start:'2027-01-05T14:00',end:'2027-01-05T15:00',location:'Library'});
+ await wait("document.querySelector('.soc-project-layout').textContent.includes('Planning call')");
+ const capture=async name=>{const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});require('node:fs').writeFileSync(require('node:path').join(require('node:os').tmpdir(),name),Buffer.from(shot.data,'base64'))};
+ await js("document.body.classList.add('dark')");await capture('portal-social-projects-desktop.png');
+ await click('tab-chat');await wait("!!document.querySelector('#socialMessageForm')");
+ await js("document.querySelector('#socialMessageForm textarea').value='Hello project';document.querySelector('#socialMessageForm').requestSubmit()");await wait("document.querySelector('#socialMessages').textContent.includes('Hello project')");
+ await js("showView('social-home')");await wait("!!document.querySelector('#socialPostForm')");
+ await js("document.querySelector('#socialPostForm textarea').value='Testing a shared study update';document.querySelector('#socialPostForm').requestSubmit()");await wait("document.querySelector('.soc-post')?.textContent.includes('Testing a shared study update')");
+ await click('like');await wait("document.querySelector('.soc-post [data-social=like]').textContent.includes('1')");
+ await capture('portal-social-home-desktop.png');
+ await js("showView('social-clubs')");await wait("!!document.querySelector('.social-view.active [data-social=new-club]')");await click('new-club');await submit({name:'Browser Club',private:true});await wait("document.querySelector('.social-view.active').textContent.includes('Browser Club')");
+ await js("showView('settings')");await wait("document.querySelector('#socialEnabled')?.checked");await js("document.querySelector('#socialEnabled').click()");await wait("document.querySelector('#socialNav').hidden");
+ await js("document.querySelector('#socialEnabled').click()");await wait("!document.querySelector('#socialNav').hidden");
+ await js("showView('social-projects')");await wait("document.querySelector('.soc-project-detail')?.textContent.includes('Browser Collaboration Project')");
+ for(const width of [320,390,744]){await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:true});for(const dark of [true,false]){await js(`document.body.classList.toggle('dark',${dark})`);assert(await js('document.documentElement.scrollWidth<=innerWidth'),'Social projects overflow '+width)}}
+ await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await js("showView('social-home')");await wait("!!document.querySelector('#socialPostForm')");await capture('portal-social-home-mobile.png');
+ console.log('PASS Socialise: opt-in, retained data, project/task/checklist/history, computed progress, meetings, shared chat, feed likes, private club, mobile light/dark.');
+};

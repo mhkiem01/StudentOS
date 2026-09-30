@@ -1,0 +1,32 @@
+# Databases and backups (real user data, password hashes)
+data/
+backups/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+
+# Dependencies and generated files
+.marketplace-deps/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs, archives, OS/editor clutter
+*.log
+*.zip
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
