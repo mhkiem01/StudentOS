@@ -8,6 +8,13 @@ import backend  # adds backend/<feature> folders to the import path
 import accounts
 import marketplace_store as m
 
+# A real two-page PDF: PDFium rejects fake bytes, so the preview path needs a valid file.
+PDF=(b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n'
+     b'2 0 obj<</Type/Pages/Kids[3 0 R 4 0 R]/Count 2>>endobj\n'
+     b'3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n'
+     b'4 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n'
+     b'trailer<</Root 1 0 R>>\n%%EOF\n')
+
 class MarketplaceTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'accounts.db'
@@ -52,8 +59,13 @@ class MarketplaceTests(unittest.TestCase):
         self.assertEqual(m.resource(self.path,self.a,key)['content'],b'New private version')
         with self.assertRaises(m.Forbidden):self.w(self.b,'listing_status',{'status':'unlisted'},key)
     def test_pdf_and_rich_note_snapshot(self):
-        key=self.note('3',format='pdf',base64=base64.b64encode(b'%PDF-1.7\nprivate').decode())
+        key=self.note('3',format='pdf',base64=base64.b64encode(PDF).decode())
         with self.assertRaises(m.Forbidden):m.resource(self.path,self.b,key)
+        listing=next(l for l in m.state(self.path,self.b)['listings'] if l['id']==key)
+        self.assertEqual(listing['preview_pages'],1)  # the last page is never previewed
+        self.assertEqual(listing['metadata']['pages'],2)
+        with self.assertRaisesRegex(ValueError,'Could not safely read this PDF'):
+            self.note(format='pdf',base64=base64.b64encode(b'%PDF-1.7\nnot really a pdf').decode())
         html=self.note(format='html',content='<script>alert(1)</script><p>Text</p><img src="/api/notes/images/'+('a'*32)+'.png">')
         self.assertEqual(m.resource(self.path,self.a,html)['content'],b'<p>Text</p>')
     def test_money_validation(self):

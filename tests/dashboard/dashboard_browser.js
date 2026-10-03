@@ -53,7 +53,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await wait("state.topics['Design Principles']?.length===2");
  await new Promise(r=>setTimeout(r,1000)); // Existing import success navigates after 900ms.
  assert(await js("validateQuiz('not a valid quiz',null).errors.length>0"));
- await js("state.subjects.computing.topics.push('Design Principles');save();startQuiz('Design Principles');submitAnswer('A');goNextQuestion();submitAnswer('B');goNextQuestion()");
+ await js("state.subjects.computing.topics.push('Design Principles');save();startQuiz('Design Principles',false,true);submitAnswer('A');goNextQuestion();submitAnswer('B');goNextQuestion()");
  assert(await js("document.querySelector('#view-results').classList.contains('active')"));
  assert.equal(await js("state.latestResults['Design Principles'].correct"),2);
  const previousReviews=await js("Object.values(state.flashcardProgress['Networking Fundamentals']||{})[0]?.reviews||0");
@@ -86,7 +86,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await require('../planner/general_todos_browser.js')(js,call);
  await require('../finance/finance_browser.js')(js,call);
  await require('../study/study_progress_browser.js')(js,call);
+ await require('../study/subject_quizzes_browser.js')(js,call);
+ await require('../assistant/voice_tutor_browser.js')(js,call);
  await require('../social/social_browser.js')(js,call);
  await require('../marketplace/marketplace_browser.js')(js,call);
+ await require('./startup_resilience_browser.js')(js,call);
  assert.deepEqual(errors,[]);console.log('PASS dashboard: 24-hour grid, accurate half-hour positioning, sticky days, status persistence, completed visibility, saved display name, collapsed nav persistence, existing pages, quick actions, desktop proportions, mobile drawer and no page overflow.');ws.close();
 })().catch(e=>{console.error(e);process.exit(1)});

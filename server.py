@@ -29,6 +29,7 @@ import accounts
 import social_store
 import marketplace_store
 import quick_review_store
+import voice_tutor
 import os
 from contextvars import ContextVar
 from http.cookies import SimpleCookie
@@ -801,7 +802,7 @@ class Handler(BaseHTTPRequestHandler):
             data=image.read_bytes();self.send_response(200)
             self.send_header('Content-Type',mimetypes.guess_type(image.name)[0]);self.send_header('X-Content-Type-Options','nosniff')
             self.send_header('Cache-Control','private, no-store');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
-        if path in ('/frontend/study/quick-review.js','/frontend/study/quick-review.css','/frontend/marketplace/marketplace.js','/frontend/marketplace/marketplace.css','/frontend/social/social.js','/frontend/social/social.css','/frontend/study/note-editor.js','/frontend/study/note-editor.css','/frontend/planner/general-todos.js','/frontend/planner/general-todos.css','/frontend/finance/finance.js','/frontend/finance/finance.css','/frontend/study/study-progress.js','/frontend/study/study-progress.css'):
+        if path in ('/frontend/study/quick-review.js','/frontend/study/quick-review.css','/frontend/marketplace/marketplace.js','/frontend/marketplace/marketplace.css','/frontend/social/social.js','/frontend/social/social.css','/frontend/study/note-editor.js','/frontend/study/note-editor.css','/frontend/planner/general-todos.js','/frontend/planner/general-todos.css','/frontend/finance/finance.js','/frontend/finance/finance.css','/frontend/study/study-progress.js','/frontend/study/study-progress.css','/frontend/assistant/voice-tutor.js','/frontend/assistant/voice-tutor.css'):
             data=(ROOT/path.lstrip('/')).read_bytes();self.send_response(200)
             self.send_header('Content-Type','text/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
             self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
@@ -946,6 +947,20 @@ class Handler(BaseHTTPRequestHandler):
                 note=dict(note)
                 if note.get('content_format')=='html':note['content']=note_document.plain(note['content'])
                 return self.send_json(ai_provider.note_study(note,payload.get('kind')))
+            if path in ('/api/ai/voice/ask','/api/ai/voice/practice/question'):
+                payload=self.read_json()
+                subject_id=payload.get('subject_id') or None
+                topic=str(payload.get('topic') or '').strip() or None
+                with connect() as con:
+                    notes=voice_tutor.load_notes(con,subject_id,topic)
+                    subject=con.execute('SELECT name FROM subjects WHERE id=?',(subject_id,)).fetchone() if subject_id else None
+                subject=subject['name'] if subject else None
+                if path.endswith('/question'):
+                    return self.send_json(voice_tutor.practice_question(notes,subject,topic,payload.get('used'),payload.get('asked')))
+                return self.send_json(voice_tutor.ask(notes,payload.get('question'),' · '.join(filter(None,[subject,topic])) or None,payload.get('history'),payload.get('quiz')))
+            if path == '/api/ai/voice/practice/grade':
+                payload=self.read_json()
+                return self.send_json(voice_tutor.grade_answer(payload.get('question'),payload.get('answer')))
             if path == "/api/ai/timetable-image":
                 payload = self.read_json()
                 return self.send_json(ai_provider.extract_timetable(payload.get("image", "")))
@@ -972,7 +987,12 @@ def main():
     parser = argparse.ArgumentParser(description="Student Helper Portal local server")
     parser.add_argument("--port", type=int, help="Listen on a specific port")
     parser.add_argument("--no-browser", action="store_true", help="Do not open another browser tab")
+    parser.add_argument("--stay-awake", action="store_true", help="Keep Windows from sleeping while the server runs")
     args = parser.parse_args()
+    if args.stay_awake and sys.platform == "win32":
+        import ctypes
+        # ES_CONTINUOUS | ES_SYSTEM_REQUIRED: released automatically when this process exits.
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
     init_db()
     auth_path=DB_PATH.parent/'accounts.db'
     current_name=portal_state()['settings'].get('display_name') or 'Admin'

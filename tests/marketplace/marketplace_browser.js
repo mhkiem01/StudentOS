@@ -14,11 +14,11 @@ module.exports=async(js,call)=>{
  await js("document.querySelector('#mkSearch').value='no matches';document.querySelector('#mkSearch').dispatchEvent(new Event('input'))");
  assert(await js("document.querySelector('.mk-results').textContent.includes('No notes found')"));
  await js("document.querySelector('#mkSearch').value='COMP1521';document.querySelector('#mkSearch').dispatchEvent(new Event('input'))");assert.equal(await js("document.querySelectorAll('.mk-listing').length"),1);
- await click('pane-dashboard');assert(await js("document.querySelector('#mkBody').textContent.includes('Recorded earnings')"));
+ await click('pane-dashboard');assert(await js("document.querySelector('.marketplace-view.active #mkBody').textContent.includes('Recorded earnings')"));
  await click('edit-listing');await wait("!!document.querySelector('.mk-dialog [name=price]')");await submit({price:'0',rights:true});
  await click('go-tutors');await wait("!!document.querySelector('#mkFilters [name=method]')");await click('onboard');
  await submit({tagline:'Patient coding support',subjects:'COMP1521, COMP2511',bio:'Browser test tutor',price:'45',timezone:'UTC','start-0':'09:00','end-0':'17:00',terms:true});
- await wait("!!document.querySelector('.mk-tutor-card')");await click('pane-dashboard');assert(await js("document.querySelector('#mkBody').textContent.includes('Bookings & past sessions')"));
+ await wait("!!document.querySelector('.mk-tutor-card')");await click('pane-dashboard');assert(await js("document.querySelector('.marketplace-view.active #mkBody').textContent.includes('Bookings & past sessions')"));
  await click('pane-browse');await click('go-notes');await wait("!!document.querySelector('.mk-listing')");
  const capture=async name=>{const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});require('node:fs').writeFileSync(require('node:path').join(require('node:os').tmpdir(),name),Buffer.from(shot.data,'base64'))};
  await js("document.body.classList.add('dark')");await capture('portal-marketplace-desktop.png');

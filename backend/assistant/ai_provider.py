@@ -108,7 +108,8 @@ def _ollama_chat(payload, on_progress=None):
     started = time.monotonic()
     payload = {**payload, "stream": True, "think": False, "keep_alive": "10m",
                "options": {"temperature": 0, "num_predict": 4096,
-                           "num_ctx": max(4096,min(32768,int(os.getenv('OLLAMA_CONTEXT','16384'))))}}
+                           "num_ctx": max(4096,min(32768,int(os.getenv('OLLAMA_CONTEXT','16384')))),
+                           **payload.get("options", {})}}
     req = request.Request(cfg["ollama_url"].rstrip("/") + "/api/chat",
                           data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
     parts, structured_fallback, characters, last_update = [], [], 0, 0
