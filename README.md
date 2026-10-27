@@ -63,7 +63,8 @@ check. Tests use temporary databases; live AI checks are separate and optional.
 
 Keep `data/`, `backups/` and `.env`: they contain user data, backups and secrets.
 Keep `.marketplace-deps/` if installed: marketplace PDF processing uses it.
-`requirements-marketplace.txt` lists the optional marketplace dependencies.
+`requirements-marketplace.txt` lists the optional marketplace dependencies (PDF previews and,
+on Windows, the time-zone data for tutor bookings): `python -m pip install -r requirements-marketplace.txt`.
 
 Python generates `__pycache__/` folders and `.pyc` files. They can be removed
 when cleaning the project and are recreated as needed. Do not remove source

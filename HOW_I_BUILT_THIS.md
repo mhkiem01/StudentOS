@@ -970,6 +970,32 @@ Everything else — AI, finance, gym, chat — is this same loop with different 
 > the top of this file.** Format:
 > `- YYYY-MM-DD — [Added/Changed/Fixed] <what>. **What we learned:** <lesson>.`
 
+- **2026-10-27 — Fixed** the unit tests failing on GitHub (they passed on the laptop).
+  - **What broke:** 4 marketplace tests crashed with "No time zone found with key
+    Australia/Sydney".
+  - **Why:** tutor booking times use named time zones (`ZoneInfo('Australia/Sydney')`).
+    Linux and macOS have a time-zone database built in; **Windows doesn't**, so
+    Python needs the `tzdata` package. The laptop had it installed long ago, so the
+    tests passed there; GitHub's fresh Python didn't, so they crashed. A fresh
+    Windows laptop (like the new host at `100.82.101.10`) would have hit the same
+    error, with a misleading message ("Use a valid IANA timezone").
+  - **Fix:** `tzdata` added to `requirements-marketplace.txt` (CI installs it), and
+    the app now says exactly what's missing and how to install it. A test checks
+    that message.
+  - **How it was found:** GitHub logs need a login, so CI was reproduced locally
+    instead:
+    - a fresh clone (only committed files: no `.env`, no `data/`);
+    - a brand-new Python virtual environment;
+    - the time zone set to UTC, like GitHub's machines;
+    - no Ollama.
+
+    The same 4 errors appeared at once.
+  - **What we learned:** "works on my machine" often means "my machine has
+    something installed that I forgot about". CI's clean computer is the most
+    honest test of what the app *really* needs. A **virtual environment**
+    (`python -m venv`) is a clean, separate Python for exactly this kind of
+    check.
+
 - **2026-10-27 — Changed** the Tailscale address printed by `START_ANYWHERE.bat` to
   `100.82.101.10` (the laptop that now runs the app).
   **What we learned:** the server listens on `0.0.0.0`, which means "every network

@@ -1,3 +1,6 @@
-# Optional only for PDF uploads/page-image previews; base portal has no new mandatory dependency.
+# Optional: install with  python -m pip install -r requirements-marketplace.txt
+# The base portal needs only Python. These add PDF uploads/page-image previews (pypdfium2, Pillow) and the
+# time-zone database used for tutor booking times (tzdata: Windows has no built-in one).
 pypdfium2==5.13.0
 Pillow>=11.0
+tzdata
