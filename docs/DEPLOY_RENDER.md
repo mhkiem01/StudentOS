@@ -21,6 +21,24 @@ Render deploys the `main` branch. Merge `master` into `main` (pull request on Gi
 4. **Apply**. Render asks for a payment method for the paid instance.
 5. Wait for the deploy to show **Live**. The address is at the top of the service page.
 
+### Or set it up by hand (New + → Web Service)
+
+Render only reads `render.yaml` through **Blueprint**. If you create a **Web Service** yourself, fill in:
+
+| Field | Value |
+|---|---|
+| Language | Python 3 |
+| Branch | `main` |
+| Region | Singapore |
+| Root Directory | *(empty)* |
+| Build Command | `python -m pip install -r requirements-marketplace.txt` |
+| Start Command | `python server.py --no-browser` |
+| Instance Type | Starter or higher (the free one has no disk) |
+| Environment variables | `PYTHON_VERSION=3.13.5`, `PYTHONUNBUFFERED=1`, `STUDENTOS_DATA=/var/data`, `PORTAL_HTTPS=1`, `PORTAL_TRUST_PROXY=1`, and optionally `GROQ_API_KEY` / `OPENROUTER_API_KEY` |
+| Advanced → Disk | Mount path `/var/data`, 1 GB. **Without this, every update erases your data.** |
+| Advanced → Health Check Path | `/api/health` |
+| Advanced → Auto-Deploy | After CI Checks Pass |
+
 ## 3. Sign in: bring your data, or start fresh
 
 ### Bring the data from your laptop (recommended)

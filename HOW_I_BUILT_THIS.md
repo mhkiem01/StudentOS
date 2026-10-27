@@ -970,6 +970,41 @@ Everything else — AI, finance, gym, chat — is this same loop with different 
 > the top of this file.** Format:
 > `- YYYY-MM-DD — [Added/Changed/Fixed] <what>. **What we learned:** <lesson>.`
 
+- **2026-10-27 — Fixed** three things found while going online.
+  1. **A sign-in race (real bug).**
+     - *What broke:* sometimes the Accounts test, and potentially a real user on
+       a slow connection, got a bare page saying "Cross-site or unverified
+       request rejected" after pressing Sign in.
+     - *Why:* the sign-in page first asks the server "is someone already signed
+       in?" and only *then* attaches its submit handler. A press during that
+       wait let the browser post the form itself, which the server rightly
+       refuses.
+     - *Fix:* the button starts disabled until the page is ready, and a press
+       during the check is held and sent afterwards. The test now waits for the
+       page's "ready" mark instead of guessing.
+     - *Lesson:* anything that happens *before* your `await` finishes is a
+       window where the page is half-ready. Close it, or make it safe.
+  2. **Flaky CI.**
+     - *What happened:* the same commit failed three browser jobs on one run
+       and passed all of them on the next.
+     - *Fix:* each browser job now retries once. A retry leaves a yellow
+       warning on the run, so flaky tests stay visible instead of hidden.
+     - *Lesson:* a test that fails only sometimes is still telling you
+       something; often it's a timing race like the one above.
+  3. **A confusing crash on Render.**
+     - *What broke:* `PermissionError: '/var/data'`. `STUDENTOS_DATA` pointed at
+       `/var/data`, but no disk was attached there, and the app may not create
+       that folder.
+     - *Fix:* the app now stops with a plain-English message saying to add a
+       disk at that path.
+     - *Lesson:* turn errors you can predict into messages that say what to do.
+
+- **2026-10-27 — Changed** the Render guide to add the "set it up by hand" form values
+  (start command `python server.py --no-browser`, build command, environment
+  variables, disk). **What we learned:** a **Blueprint** (`render.yaml`) is
+  *infrastructure as code*: the same settings written in a file instead of
+  clicked into a form, so they can't be forgotten and they're saved in Git.
+
 - **2026-10-27 — Added** hosting on **Render** with a persistent disk
   (`render.yaml`, guide in `docs/DEPLOY_RENDER.md`).
   - **Why not Vercel:** Vercel runs short-lived *functions* on a disk that's wiped
