@@ -54,7 +54,13 @@ INDEX_PATH = ROOT / "index.html"
 # private Wi-Fi can all use the same LAN address.
 HOST = "0.0.0.0"
 
-DB_DIR.mkdir(exist_ok=True)
+try:
+    DB_DIR.mkdir(exist_ok=True)
+except PermissionError:
+    # On a host, STUDENTOS_DATA must be a disk mounted at that path; without one the folder cannot be created.
+    raise SystemExit(f"Cannot create the data folder {DB_DIR}. STUDENTOS_DATA points there, but no disk is mounted at that "
+                     "path. On Render: open the service > Disks > Add Disk with this mount path (a paid instance is needed), "
+                     "then deploy again. See docs/DEPLOY_RENDER.md.")
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;

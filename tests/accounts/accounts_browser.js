@@ -7,7 +7,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  const js=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value};
  const wait=async exp=>{for(let i=0;i<150;i++){if(await js(exp))return;await new Promise(r=>setTimeout(r,80))}throw Error('Timed out: '+exp)};
  const click=sel=>js(`document.querySelector(${JSON.stringify(sel)}).click()`);
- const submit=async(selector,values)=>js(`(()=>{const f=document.querySelector(${JSON.stringify(selector)});for(const [k,v] of Object.entries(${JSON.stringify(values)})){f.elements[k].value=v}f.requestSubmit()})()`);
+ const submit=async(selector,values)=>{if(selector==='#loginForm')await wait("document.querySelector('#loginForm')?.dataset.ready==='1'");return js(`(()=>{const f=document.querySelector(${JSON.stringify(selector)});for(const [k,v] of Object.entries(${JSON.stringify(values)})){f.elements[k].value=v}f.requestSubmit()})()`);}
  const shot=async name=>{const r=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});fs.writeFileSync(path.join(os.tmpdir(),name),Buffer.from(r.data,'base64'))};
  await call('Runtime.enable');await call('Page.enable');await call('Emulation.setDeviceMetricsOverride',{width:1440,height:950,deviceScaleFactor:1,mobile:false});await call('Page.navigate',{url:base});
  await wait("location.pathname==='/login'&&!!document.querySelector('#loginForm')");await shot('portal-login-desktop.png');

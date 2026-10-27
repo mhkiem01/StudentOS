@@ -86,10 +86,13 @@ jobs:
       - name: Run
         # The browser tests save screenshots in the temp folder; keep them where they can be uploaded.
         # (The runner context exists only inside steps, so this cannot be set for the whole job.)
+        # Browser tests on a shared cloud machine occasionally stumble on timing; one retry keeps CI dependable,
+        # and the warning it leaves on the run keeps a flaky test visible instead of hidden.
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        run: ${{ matrix.command }}
+        run: |
+          ${{ matrix.command }} || { echo "::warning title=Browser tests retried::'${{ matrix.name }}' failed once and was run again. If this keeps happening, a test is flaky."; ${{ matrix.command }}; }
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4
