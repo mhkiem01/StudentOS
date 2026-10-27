@@ -23,6 +23,8 @@ session, before finishing. It is the owner's beginner-friendly learning journal.
 - Front end: plain HTML/CSS/vanilla-JS modules (`(function(global){...})(window)`
   with a `create()` factory). No framework.
 - Storage: **SQLite** — one `accounts.db` plus a private workspace DB per user.
+- Hosting: `render.yaml` + `docs/DEPLOY_RENDER.md`. Settings: `STUDENTOS_DATA` (data folder), `PORT`,
+  `PORTAL_HTTPS=1`, `PORTAL_TRUST_PROXY=1`. Never write user data under the code folder when `STUDENTOS_DATA` is set.
 - AI: **Ollama** locally, plus optional free cloud models routed by role in
   [`ai_models.json`](ai_models.json); API keys live only in the git-ignored
   `.env`.
