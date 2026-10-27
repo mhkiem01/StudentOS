@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 title Student Helper Portal - Anywhere (Tailscale)
 echo Starting Student Helper Portal on port 8765 (laptop will stay awake)...
-echo On your phone (Tailscale on): http://100.118.32.76:8765/
+echo On your phone (Tailscale on): http://100.82.101.10:8765/
 echo Voice Tutor on this laptop:     http://localhost:8765/  (microphone needs localhost)
 echo.
 

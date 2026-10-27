@@ -329,7 +329,11 @@ def write(path,u,payload):
             if d.get('terms') is not True: raise ValueError('Accept the Marketplace agreement.')
             tz=text(d.get('timezone','Australia/Sydney'),80)
             try: ZoneInfo(tz)
-            except ZoneInfoNotFoundError: raise ValueError('Use a valid IANA timezone, such as Australia/Sydney.')
+            except ZoneInfoNotFoundError:
+                # Windows has no built-in time-zone database; without the tzdata package every zone looks invalid.
+                from zoneinfo import available_timezones
+                if not available_timezones(): raise ValueError('This computer has no time-zone data yet. Install it with: python -m pip install -r requirements-marketplace.txt')
+                raise ValueError('Use a valid IANA timezone, such as Australia/Sydney.')
             slots,exceptions=availability(d)
             data={'bio':text(d.get('bio',''),4000),'tagline':text(d.get('tagline',''),180),'experience':text(d.get('experience',''),1200),'languages':strings(d.get('languages',[])),'subjects':strings(d.get('subjects',[])),'methods':strings(d.get('methods',[])),'price_minor':money(d.get('price',0)),'timezone':tz,'availability':slots,'exceptions':exceptions,'status':select(d.get('status','accepting'),('accepting','unavailable','paused')),'approval':d.get('approval') is not False,'year':text(d.get('year',''),80)}
             if not data['subjects'] or not data['methods'] or any(v not in METHODS for v in data['methods']): raise ValueError('Choose subjects and valid session types.')

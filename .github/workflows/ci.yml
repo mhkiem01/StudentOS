@@ -73,10 +73,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      # The browser tests save screenshots in the temp folder; keep them where they can be uploaded.
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -88,6 +84,11 @@ jobs:
       - name: Optional marketplace packages
         run: python -m pip install -r requirements-marketplace.txt
       - name: Run
+        # The browser tests save screenshots in the temp folder; keep them where they can be uploaded.
+        # (The runner context exists only inside steps, so this cannot be set for the whole job.)
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: ${{ matrix.command }}
       - name: Keep the screenshots
         if: always()

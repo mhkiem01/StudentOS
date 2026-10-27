@@ -33,6 +33,14 @@ class MarketplaceTests(unittest.TestCase):
     def book(self,u=None,**kw):
         d={'start':self.start(),'subject':'COMP1521','method':'Online','duration':60};d.update(kw)
         return self.w(u or self.b,'book',d,self.a)['id']
+    def test_missing_time_zone_data_is_explained(self):
+        # Windows has no built-in time-zone database: without tzdata every zone fails, which is not the tutor's mistake.
+        import zoneinfo
+        from unittest.mock import patch
+        def missing(key):raise zoneinfo.ZoneInfoNotFoundError(key)
+        with patch.object(zoneinfo,'ZoneInfo',missing),patch.object(zoneinfo,'available_timezones',lambda:set()):
+            with self.assertRaisesRegex(ValueError,'no time-zone data.*requirements-marketplace.txt'):self.tutor(timezone='Australia/Sydney')
+        with self.assertRaisesRegex(ValueError,'valid IANA timezone'):self.tutor(timezone='Mars/Olympus')
     def test_empty_real_accounts_and_migration(self):
         state=m.state(self.path,self.b);self.assertEqual(state['listings'],[]);self.assertEqual(state['tutors'],[]);self.assertEqual(state['ledger'],[])
         m.migrate(self.path);self.assertNotIn('email',state['me']);self.assertNotIn('password',state['me'])
