@@ -1,14 +1,14 @@
 """Host-only recovery: python tools/manage_accounts.py reset-admin.
 No password is accepted as a command-line argument or printed to the terminal.
 """
-import argparse,getpass,sys
+import argparse,getpass,os,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 import backend  # adds backend/<feature> folders to the import path
 import accounts
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('action',choices=['reset-admin']);parser.parse_args()
-    path=ROOT/'data'/'accounts.db'
+    path=Path(os.environ.get('STUDENTOS_DATA') or ROOT/'data')/'accounts.db'   # STUDENTOS_DATA: a hosted server's data folder
     if not path.exists():raise SystemExit('Start the portal once to initialize accounts first.')
     password=getpass.getpass('New admin password (at least 12 characters): ')
     if password!=getpass.getpass('Confirm new password: '):raise SystemExit('Passwords do not match. Nothing changed.')

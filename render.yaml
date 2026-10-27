@@ -1,0 +1,33 @@
+# Render Blueprint: the whole online setup in one file (see docs/DEPLOY_RENDER.md for the step-by-step guide).
+# One web service runs server.py as it runs on a laptop; a persistent disk keeps every database and upload.
+services:
+  - type: web
+    name: studentos
+    runtime: python
+    plan: starter               # a persistent disk needs a paid instance; the free one forgets everything
+    region: singapore           # the closest Render region to Australia
+    buildCommand: python -m pip install -r requirements-marketplace.txt
+    startCommand: python server.py --no-browser
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass   # deploy a new commit on main only after the GitHub CI checks pass
+    disk:
+      name: studentos-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: PYTHONUNBUFFERED     # show the server's messages in Render's logs straight away
+        value: '1'
+      - key: STUDENTOS_DATA       # databases, uploads and backups live on the disk
+        value: /var/data
+      - key: PORTAL_HTTPS         # Render serves the site over HTTPS: sign-in cookies are sent only over HTTPS
+        value: '1'
+      - key: PORTAL_TRUST_PROXY   # count failed sign-ins per visitor, not per Render proxy
+        value: '1'
+      # Optional cloud AI keys for the Voice Tutor (Ollama cannot run here). Render asks for the values;
+      # they are never stored in this file or on GitHub.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false

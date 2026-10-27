@@ -3,9 +3,11 @@ from pathlib import Path
 from datetime import datetime
 import shutil
 
+import os
 root = Path(__file__).resolve().parents[1]
-src = root / "data" / "quizprep.db"
-dst_dir = root / "backups"
+data = Path(os.environ.get("STUDENTOS_DATA") or root / "data")   # STUDENTOS_DATA: a hosted server's data folder
+src = data / "quizprep.db"
+dst_dir = data / "backups" if os.environ.get("STUDENTOS_DATA") else root / "backups"
 dst_dir.mkdir(exist_ok=True)
 
 if not src.exists():

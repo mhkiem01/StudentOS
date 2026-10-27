@@ -21,6 +21,8 @@ It is the owner's beginner-friendly learning journal of how the app was built.
 - Back end: Python standard library only (`server.py`); no Flask/Django.
 - Front end: plain HTML/CSS/vanilla-JS modules (`create()` factory pattern).
 - Storage: SQLite — `accounts.db` + a private workspace DB per user.
+- Hosting: `render.yaml` + `docs/DEPLOY_RENDER.md`. Settings: `STUDENTOS_DATA` (data folder), `PORT`,
+  `PORTAL_HTTPS=1`, `PORTAL_TRUST_PROXY=1`. Never write user data under the code folder when `STUDENTOS_DATA` is set.
 - AI: Ollama locally + optional cloud models routed per role in `ai_models.json`;
   keys only in the git-ignored `.env`.
 - Tests: `python tests/support/run_tests.py` (+ `--browser`, `--dashboard`,

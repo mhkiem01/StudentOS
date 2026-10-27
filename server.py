@@ -39,13 +39,16 @@ from http.cookies import SimpleCookie
 from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parent
-DB_DIR = ROOT / "data"
+# STUDENTOS_DATA moves all user data (databases, uploads, backups) to another folder, such as a hosting
+# provider's persistent disk (see docs/DEPLOY_RENDER.md). Without it, data stays in data/ next to this file.
+HOSTED_DATA = os.environ.get("STUDENTOS_DATA")
+DB_DIR = Path(HOSTED_DATA) if HOSTED_DATA else ROOT / "data"
 DB_PATH = DB_DIR / "quizprep.db"
 REQUEST_DB = ContextVar('portal_database', default=None)
 WORKSPACE_LOCK = threading.Lock()
 READY_WORKSPACES = set()
 def database_path(): return REQUEST_DB.get() or DB_PATH
-def backups_path(): return ROOT/'backups' if database_path()==DB_PATH else database_path().parent/'backups'
+def backups_path(): return (DB_DIR/'backups' if HOSTED_DATA else ROOT/'backups') if database_path()==DB_PATH else database_path().parent/'backups'
 INDEX_PATH = ROOT / "index.html"
 # Listen on the PC's network interfaces so the laptop and phones on the same
 # private Wi-Fi can all use the same LAN address.
@@ -573,6 +576,18 @@ def choose_port(start=8765, end=8795):
                 continue
     raise RuntimeError("No free local port found between 8765 and 8795.")
 
+def client_ip(headers,address):
+    """The visitor's address, for counting failed sign-ins. Behind a hosting proxy (PORTAL_TRUST_PROXY=1) every
+    request arrives from the proxy, so the address it forwards is used: Cloudflare's header first (set by the edge,
+    not the browser), then the first X-Forwarded-For entry. Failed sign-ins are also counted per username, so a
+    forged header cannot be used to keep guessing one account's password."""
+    if os.environ.get("PORTAL_TRUST_PROXY") == "1":
+        for name in ("CF-Connecting-IP", "True-Client-IP"):
+            if headers.get(name):return headers.get(name).strip()[:64]
+        forwarded=headers.get("X-Forwarded-For","").split(",")[0].strip()
+        if forwarded:return forwarded[:64]
+    return address
+
 def lan_addresses():
     """Return likely private-network IPv4 addresses for phone access."""
     addresses = []
@@ -649,7 +664,7 @@ class Handler(BaseHTTPRequestHandler):
                 file=ROOT/('frontend/accounts/login.html' if path=='/login' else path.lstrip('/'))
                 raw=file.read_bytes();self.send_response(200);self.send_header('Content-Type',('text/html' if path=='/login' else 'text/javascript' if path.endswith('.js') else 'text/css')+'; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
             if path=='/api/auth/login' and post:
-                values=self.read_json();user,token=accounts.login(auth_path,values.get('username'),values.get('password'),self.client_address[0],self.headers.get('User-Agent',''))
+                values=self.read_json();user,token=accounts.login(auth_path,values.get('username'),values.get('password'),client_ip(self.headers,self.client_address[0]),self.headers.get('User-Agent',''))
                 return self.auth_json({'ok':True,'user':user},token)
             user=accounts.session(auth_path,self.cookie_token())
             if not user:
@@ -1140,11 +1155,13 @@ def main():
     auth_path=DB_PATH.parent/'accounts.db'
     current_name=portal_state()['settings'].get('display_name') or 'Admin'
     accounts.initialize(auth_path,admin_name=current_name)
-    port = args.port if args.port else choose_port()
-    phone_urls = [f"http://{address}:{port}/" for address in lan_addresses()]
+    # A host such as Render chooses the port (PORT) and gives the site its public address.
+    port = args.port or (int(os.environ["PORT"]) if os.environ.get("PORT") else choose_port())
+    public = (os.environ.get("PORTAL_PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
+    phone_urls = [] if public else [f"http://{address}:{port}/" for address in lan_addresses()]
     # Use the same LAN origin on this PC and mobile devices. This avoids keeping
     # separate 127.0.0.1 and 192.168.x.x browser-storage namespaces.
-    url = phone_urls[0] if phone_urls else f"http://127.0.0.1:{port}/"
+    url = public+"/" if public else phone_urls[0] if phone_urls else f"http://127.0.0.1:{port}/"
     httpd = PortalServer((HOST, port), Handler)
     httpd.accounts_path=auth_path
     httpd.public_url = url
@@ -1158,7 +1175,9 @@ def main():
     print(f" App:      {url}")
     print(f" Database: {DB_PATH}")
     print()
-    if phone_urls:
+    if public:
+        print(" Online at " + url)
+    elif phone_urls:
         print(" Phone (same Wi-Fi):")
         for phone_url in phone_urls:
             print(f"   {phone_url}")

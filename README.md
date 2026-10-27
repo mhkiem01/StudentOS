@@ -16,6 +16,11 @@ Keep the server running and open the URL it prints. Use the same private Wi-Fi
 network to connect from another device. See [README.txt](README.txt) for initial
 admin login, account recovery and detailed startup instructions.
 
+## Put it online (Render)
+
+To use it from anywhere without a laptop running, deploy it on Render with a persistent disk for the data:
+see [Putting StudentOS online with Render](docs/DEPLOY_RENDER.md). Everything is set up by `render.yaml`.
+
 ## AI configuration
 
 The study assistant uses local Ollama with `qwen3-vl:8b` by default. Voice Tutor

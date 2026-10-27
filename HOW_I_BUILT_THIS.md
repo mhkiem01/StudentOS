@@ -970,6 +970,63 @@ Everything else — AI, finance, gym, chat — is this same loop with different 
 > the top of this file.** Format:
 > `- YYYY-MM-DD — [Added/Changed/Fixed] <what>. **What we learned:** <lesson>.`
 
+- **2026-10-27 — Added** hosting on **Render** with a persistent disk
+  (`render.yaml`, guide in `docs/DEPLOY_RENDER.md`).
+  - **Why not Vercel:** Vercel runs short-lived *functions* on a disk that's wiped
+    between requests. This app is one long-running server that keeps its data in
+    SQLite *files*, so on Vercel only the page design appeared (`/api/health` →
+    404) and nothing could be saved. Render runs the server as-is, and a
+    **persistent disk** keeps the files.
+  - **What changed in the code:** the same code now runs on a laptop *and*
+    online, decided by **environment variables** (settings the host passes to the
+    program):
+
+    ```python
+    HOSTED_DATA = os.environ.get("STUDENTOS_DATA")      # e.g. /var/data, the disk
+    DB_DIR = Path(HOSTED_DATA) if HOSTED_DATA else ROOT / "data"
+    port = args.port or (int(os.environ["PORT"]) if os.environ.get("PORT") else choose_port())
+    ```
+
+    - `PORTAL_HTTPS=1` makes sign-in cookies HTTPS-only.
+    - `PORTAL_TRUST_PROXY=1` counts failed sign-ins per *visitor*. Behind
+      Render's proxy, every request looks like it comes from the proxy, so one
+      person's wrong guesses could otherwise lock everybody out.
+  - **Moving the data:** `tools/restore_data.py` copies the laptop's `data/` onto
+    the disk with SQLite's own **backup API**. That's safe even while the server
+    runs; copying database files directly can corrupt them.
+  - **Caught by the tests:**
+    - The server's startup messages were missing when it wasn't printing to a
+      terminal: Python **buffers** output, so Render's logs would have stayed
+      empty. Fixed with `PYTHONUNBUFFERED=1`.
+    - Render runs **Linux**, where `Study.js` and `study.js` are different
+      files. A check confirmed that all 51 files the app links to match their
+      names exactly.
+  - **What we learned:**
+    - Pick a host that fits the app's shape: *serverless* (Vercel) suits
+      stateless code, while a long-running server with files needs a server host
+      with a disk.
+    - Configure with environment variables, so one codebase runs anywhere and
+      secrets stay out of the code.
+
+- **2026-10-27 — Fixed** "this page isn't working (HTTP 502)" when moving the app to
+  another laptop. *(This corrects the entry below: `100.82.101.10` is the iPad, not
+  the new host.)*
+  - **What broke:** two things.
+    - The browser opened `msi.tail16ed60.ts.net`. That's the old laptop's
+      `tailscale serve` link, which forwards to the app *on the old laptop*, and
+      it was no longer running. **502 Bad Gateway** means "the link works, but
+      nothing answers behind it".
+    - The new laptop wasn't on the Tailscale network at all, and the address
+      typed into `START_ANYWHERE.bat` was the iPad's.
+  - **Fix:** `START_ANYWHERE.bat` now asks Tailscale for the laptop's own address
+    (`tailscale ip -4`) every time it starts. If Tailscale isn't running, it says
+    so instead of showing a wrong link.
+  - **What we learned:**
+    - `tailscale status` lists every device and its 100.x address; check it
+      before guessing.
+    - Don't hard-code something the computer can look up itself: a hard-coded
+      address goes stale as soon as the app moves.
+
 - **2026-10-27 — Fixed** the unit tests failing on GitHub (they passed on the laptop).
   - **What broke:** 4 marketplace tests crashed with "No time zone found with key
     Australia/Sydney".
