@@ -33,6 +33,38 @@ class StudyProgressTests(unittest.TestCase):
         del self.s['sessions']['MIPS'];server.import_state(self.s)
         s=self.report('a','MIPS');self.assertEqual(s['summary']['quiz_completed'],1);self.assertEqual(s['summary']['answered'],10);self.assertEqual(len(s['recent']),1)
         self.checkpoint('MIPS',{'0':'B'});s=self.report('a','MIPS');self.assertEqual(s['summary']['answered'],11);self.assertEqual(s['summary']['unique'],10);self.assertEqual(s['summary']['quiz_completed'],1)
+    def test_extra_quizzes_are_quiz_sets_of_their_topic(self):
+        q=lambda i:dict(question='Extra '+str(i),choices={'A':'yes','B':'no'},answer='A')
+        extra='MIPS › Practice exam'
+        self.s['topics'][extra]=[q(i) for i in range(3)]
+        self.s['topicMeta']={extra:{'parent':'MIPS','quizName':'Practice exam'},'MIPS':{'quizName':'Lecture quiz'}}
+        self.s['subjects']['a']['topics'].append(extra);server.import_state(self.s)
+        state=server.export_state()
+        self.assertEqual(state['topicMeta'][extra],{'color':'#7445f5','parent':'MIPS','quizName':'Practice exam'})
+        self.assertEqual(state['topicMeta']['MIPS']['quizName'],'Lecture quiz');self.assertNotIn('parent',state['topicMeta']['MIPS'])
+        self.assertEqual(state['subjects']['a']['topics'],['MIPS','Files'],'extra quizzes are never listed as subject topics')
+        s=self.report('a','MIPS')['summary'];self.assertEqual((s['quiz_total'],s['quiz_completed'],s['available']),(2,0,13))
+        self.assertEqual(self.report('a',extra)['topic'],'MIPS')
+        answers={str(i):'A' for i in range(3)};self.s['sessions'][extra]={'answers':answers};server.import_state(self.s)
+        self.s['latestResults'][extra]={'answers':answers,'questions':self.s['topics'][extra],'correct':3,'answered':3,'total':3,'completedAt':1}
+        del self.s['sessions'][extra];server.import_state(self.s)
+        r=self.report('a','MIPS');s=r['summary'];self.assertEqual((s['quiz_total'],s['quiz_completed'],s['answered'],s['unique']),(2,1,3,3))
+        self.assertEqual(r['topics'][0]['quiz_status'],'In Progress');self.assertEqual([x['topic'] for x in r['recent']],[extra])
+        self.assertEqual(self.report()['summary']['quiz_total'],3)
+        # A quiz whose topic disappears, or that points at another quiz, is kept as an ordinary topic.
+        self.s['topicMeta']['Nested']={'parent':extra};self.s['topics']['Nested']=[q(9)];server.import_state(self.s)
+        self.assertNotIn('parent',server.export_state()['topicMeta']['Nested'])
+        del self.s['topics']['MIPS'];self.s['subjects']['a']['topics'].remove('MIPS');server.import_state(self.s)
+        self.assertNotIn('parent',server.export_state()['topicMeta'][extra])
+    def test_ungrouped_topics_have_their_own_report(self):
+        self.s['topics']['Loose']=[dict(question='Loose '+str(i),choices={'A':'yes','B':'no'},answer='A') for i in range(2)]
+        server.import_state(self.s);self.checkpoint('Loose',{'0':'A','1':'B'})
+        r=self.report(p.UNGROUPED)
+        self.assertEqual(r['subject'],{'id':'__ungrouped__','name':'Ungrouped topics'})
+        self.assertEqual([t['topic'] for t in r['topics']],['Loose'])
+        self.assertEqual((r['summary']['answered'],r['summary']['correct'],r['summary']['quiz_total']),(2,1,1))
+        self.assertNotIn('Loose',[t['topic'] for t in self.report('a')['topics']])
+        with self.assertRaises(ValueError):self.report('missing-subject')
     def test_zero_and_tiny_mastery(self):
         self.assertIsNone(self.report()['summary']['accuracy']);self.assertEqual(self.report()['summary']['not_started'],2)
         self.checkpoint('Files',{'0':'A'});self.assertEqual(self.report('a','Files')['topics'][0]['mastery'],'Developing')

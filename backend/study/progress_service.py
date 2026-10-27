@@ -49,6 +49,7 @@ def capture(con,state,previous):
     for table in ('study_legacy','study_answers','study_runs','study_active','study_known'):
         con.execute('DELETE FROM '+table+' WHERE topic_name NOT IN (SELECT name FROM topics)')
     stamp=now();owners={t:s.get('id',sid) for sid,s in state.get('subjects',{}).items() for t in s.get('topics',[])}
+    for quiz,parent in con.execute('SELECT name,parent_topic FROM topics WHERE parent_topic IS NOT NULL').fetchall():owners[quiz]=owners.get(parent)
     for topic,questions in state.get('topics',{}).items():
         result=state.get('latestResults',{}).get(topic)
         finished=bool(result and result!=previous['results'].get(topic))
@@ -78,10 +79,22 @@ def mastery(correct,answered,coverage,available):
     if pct<85 or coverage<.8 or coverage*available<5:return 'Good'
     return 'Strong'
 
+UNGROUPED='__ungrouped__'  # topics that belong to no subject; their answers are saved without one
+
 def report(con,subject_id,topic_name=None):
-    subject=con.execute('SELECT id,name FROM subjects WHERE id=?',(subject_id,)).fetchone()
-    if not subject:raise ValueError('Choose an existing subject.')
-    names=[r[0] for r in con.execute('SELECT topic_name FROM subject_topics WHERE subject_id=? ORDER BY position',(subject_id,))]
+    if subject_id==UNGROUPED:
+        subject={'id':UNGROUPED,'name':'Ungrouped topics'};scope,args='subject_id IS NULL',()
+        assigned={r[0] for r in con.execute('SELECT topic_name FROM subject_topics')}
+        names=[r[0] for r in con.execute('SELECT name FROM topics WHERE parent_topic IS NULL ORDER BY sort_order,rowid') if r[0] not in assigned]
+    else:
+        subject=con.execute('SELECT id,name FROM subjects WHERE id=?',(subject_id,)).fetchone()
+        if not subject:raise ValueError('Choose an existing subject.')
+        scope,args='subject_id=?',(subject_id,)
+        names=[r[0] for r in con.execute('SELECT topic_name FROM subject_topics WHERE subject_id=? ORDER BY position',(subject_id,))]
+    # Extra quizzes are quiz sets of their topic: report them inside it.
+    children={}
+    for quiz,parent in con.execute('SELECT name,parent_topic FROM topics WHERE parent_topic IS NOT NULL ORDER BY sort_order,rowid'):children.setdefault(parent,[]).append(quiz)
+    if topic_name:topic_name=next((p for p,qs in children.items() if topic_name in qs),topic_name)
     if topic_name and topic_name not in names:raise ValueError('This topic does not belong to this subject.')
     if topic_name:names=[topic_name]
     all_questions={};all_cards={}
@@ -91,40 +104,44 @@ def report(con,subject_id,topic_name=None):
     current={r['topic_name']:dict(r) for r in con.execute('SELECT * FROM progress')}
     known={}
     for r in con.execute('SELECT * FROM study_known'):known.setdefault(r['topic_name'],{})[r['question_key']]=r['is_correct']
-    attempts=[dict(r) for r in con.execute('SELECT * FROM study_answers WHERE subject_id=? ORDER BY attempted_at',(subject_id,))]
-    runs=[dict(r) for r in con.execute('SELECT * FROM study_runs WHERE subject_id=? ORDER BY finished_at DESC',(subject_id,))]
+    attempts=[dict(r) for r in con.execute('SELECT * FROM study_answers WHERE '+scope+' ORDER BY attempted_at',args)]
+    runs=[dict(r) for r in con.execute('SELECT * FROM study_runs WHERE '+scope+' ORDER BY finished_at DESC',args)]
     latest={r['topic_name']:json.loads(r['result_json']) for r in con.execute('SELECT * FROM latest_results')}
     sessions={r['topic_name']:json.loads(r['answers_json']) for r in con.execute('SELECT * FROM topic_sessions')}
-    notes=[dict(r) for r in con.execute('SELECT * FROM notes WHERE subject_id=?',(subject_id,))]
+    notes=[dict(r) for r in con.execute('SELECT * FROM notes WHERE subject_id=?',(subject_id,))] if subject_id!=UNGROUPED else [dict(r) for r in con.execute('SELECT * FROM notes') if r['topic_name'] in names]
     reviews=[dict(r) for r in con.execute('SELECT * FROM flashcard_reviews')]
     card_progress={r['topic_name']:json.loads(r['data_json']) for r in con.execute('SELECT * FROM flashcard_progress')}
     result=[]
     for name in names:
-        qs=all_questions.get(name,[]);keys={fingerprint(q) for q in qs};evidence={k:v for k,v in known.get(name,{}).items() if k in keys}
-        for i,a in sessions.get(name,{}).items():
-            if str(i).isdigit() and int(i)<len(qs):evidence[fingerprint(qs[int(i)])]=int(answer(a)==answer(qs[int(i)].get('answer')))
-        events=[r for r in attempts if r['topic_name']==name]
-        old=legacy.get(name,{});total=old.get('answered',0)+len(events);correct=old.get('correct',0)+sum(r['is_correct'] for r in events)
-        # Imported legacy totals are still real data, not synthetic attempts.
-        if current.get(name,{}).get('answered',0)>total:total=current[name]['answered'];correct=current[name]['correct']
-        correct=max(0,min(correct,total));coverage=len(evidence)/len(keys) if keys else 0
-        candidates=[json.loads(r['result_json']) for r in runs if r['topic_name']==name]+([latest[name]] if name in latest else [])
-        completed=False
-        for r in candidates:
-            snapshot=r.get('questions') or qs;answered_keys={fingerprint(snapshot[int(i)]) for i in r.get('answers',{}) if str(i).isdigit() and int(i)<len(snapshot)}
-            if keys and keys<=answered_keys:completed=True;break
-        status='Completed' if completed else 'In Progress' if total or evidence or sessions.get(name) else 'Not Started'
+        qs=[];keys=set();evidence={};events=[];total=correct=legacy_answered=quiz_total=quiz_completed=0;started=False
+        for key in [name]+children.get(name,[]):
+            set_qs=all_questions.get(key,[]);set_keys={fingerprint(q) for q in set_qs};qs+=set_qs;keys|=set_keys
+            evidence.update({k:v for k,v in known.get(key,{}).items() if k in set_keys})
+            for i,a in sessions.get(key,{}).items():
+                if str(i).isdigit() and int(i)<len(set_qs):evidence[fingerprint(set_qs[int(i)])]=int(answer(a)==answer(set_qs[int(i)].get('answer')))
+            set_events=[r for r in attempts if r['topic_name']==key];events+=set_events
+            old=legacy.get(key,{});set_total=old.get('answered',0)+len(set_events);set_correct=old.get('correct',0)+sum(r['is_correct'] for r in set_events)
+            # Imported legacy totals are still real data, not synthetic attempts.
+            if current.get(key,{}).get('answered',0)>set_total:set_total=current[key]['answered'];set_correct=current[key]['correct']
+            total+=set_total;correct+=max(0,min(set_correct,set_total));legacy_answered+=old.get('answered',0);started=started or bool(sessions.get(key))
+            if not set_qs:continue
+            quiz_total+=1
+            for r in [json.loads(r['result_json']) for r in runs if r['topic_name']==key]+([latest[key]] if key in latest else []):
+                snapshot=r.get('questions') or set_qs;answered_keys={fingerprint(snapshot[int(i)]) for i in r.get('answers',{}) if str(i).isdigit() and int(i)<len(snapshot)}
+                if set_keys<=answered_keys:quiz_completed+=1;break
+        coverage=len(evidence)/len(keys) if keys else 0;completed=bool(quiz_total) and quiz_completed==quiz_total
+        status='Completed' if completed else 'In Progress' if total or evidence or started else 'Not Started'
         ns=[n for n in notes if n['topic_name']==name];rs=[r for r in reviews if r['topic_name']==name]
         ratings={k:sum(r['rating']==k for r in rs) for k in ('again','hard','good','easy')}
         timestamps=[r['attempted_at'] for r in events]+[r['reviewed_at'] for r in rs]+[n['last_studied_at'] for n in ns if n['last_studied_at']]
         card_count=len(all_cards.get(name,[]));reviewed=len({r['card_position'] for r in rs if 0<=r['card_position']<card_count})
         reviewed=max(reviewed,min(card_count,len(card_progress.get(name,{}))))
-        result.append(dict(topic=name,answered=total,correct=correct,incorrect=total-correct,accuracy=accuracy(correct,total),legacy_answered=old.get('answered',0),detailed_attempts=len(events),available=len(keys),unique=len(evidence),latest_correct=sum(evidence.values()),coverage=round(coverage*100),quiz_status=status,quiz_total=int(bool(qs)),quiz_completed=int(completed),mastery=mastery(correct,total,coverage,len(keys)),cards_available=card_count,cards_reviewed=reviewed,ratings=ratings,notes=len(ns),last_studied=max(timestamps) if timestamps else None))
+        result.append(dict(topic=name,answered=total,correct=correct,incorrect=total-correct,accuracy=accuracy(correct,total),legacy_answered=legacy_answered,detailed_attempts=len(events),available=len(keys),unique=len(evidence),latest_correct=sum(evidence.values()),coverage=round(coverage*100),quiz_status=status,quiz_total=quiz_total,quiz_completed=quiz_completed,mastery=mastery(correct,total,coverage,len(keys)),cards_available=card_count,cards_reviewed=reviewed,ratings=ratings,notes=len(ns),last_studied=max(timestamps) if timestamps else None))
     totals={k:sum(t[k] for t in result) for k in ('answered','correct','incorrect','available','unique','quiz_total','quiz_completed','cards_available','cards_reviewed','detailed_attempts','legacy_answered')}
     totals.update(accuracy=accuracy(totals['correct'],totals['answered']),completion=accuracy(totals['quiz_completed'],totals['quiz_total']),topics=len(result),studied=sum(bool(t['answered'] or t['cards_reviewed'] or t['last_studied']) for t in result),in_progress=sum(t['quiz_total'] and t['quiz_status']=='In Progress' for t in result),not_started=sum(t['quiz_total'] and t['quiz_status']=='Not Started' for t in result),notes=sum(t['notes'] for t in result) if topic_name else len(notes))
-    recent=[]
+    recent=[];scope={k for n in names for k in [n]+children.get(n,[])}
     for r in runs:
-        if r['topic_name'] not in names:continue
+        if r['topic_name'] not in scope:continue
         snapshot=json.loads(r['result_json']);a=snapshot.get('answers',{});qs=snapshot.get('questions',[]);correct=sum(answer(v)==answer(qs[int(i)].get('answer')) for i,v in a.items() if str(i).isdigit() and int(i)<len(qs))
         recent.append(dict(id=r['id'],topic=r['topic_name'],finished_at=r['finished_at'],answered=len(a),correct=correct,accuracy=accuracy(correct,len(a)),result=snapshot))
     eligible=[t for t in result if t['unique']>=5 and t['coverage']>=50 and t['accuracy'] is not None]

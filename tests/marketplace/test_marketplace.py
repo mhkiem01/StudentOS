@@ -8,6 +8,13 @@ import backend  # adds backend/<feature> folders to the import path
 import accounts
 import marketplace_store as m
 
+# A real two-page PDF: PDFium rejects fake bytes, so the preview path needs a valid file.
+PDF=(b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n'
+     b'2 0 obj<</Type/Pages/Kids[3 0 R 4 0 R]/Count 2>>endobj\n'
+     b'3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n'
+     b'4 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n'
+     b'trailer<</Root 1 0 R>>\n%%EOF\n')
+
 class MarketplaceTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'accounts.db'
@@ -52,10 +59,43 @@ class MarketplaceTests(unittest.TestCase):
         self.assertEqual(m.resource(self.path,self.a,key)['content'],b'New private version')
         with self.assertRaises(m.Forbidden):self.w(self.b,'listing_status',{'status':'unlisted'},key)
     def test_pdf_and_rich_note_snapshot(self):
-        key=self.note('3',format='pdf',base64=base64.b64encode(b'%PDF-1.7\nprivate').decode())
+        key=self.note('3',format='pdf',base64=base64.b64encode(PDF).decode())
         with self.assertRaises(m.Forbidden):m.resource(self.path,self.b,key)
+        listing=next(l for l in m.state(self.path,self.b)['listings'] if l['id']==key)
+        self.assertEqual(listing['preview_pages'],[1])  # page 1 by default; the last page is never previewed
+        png,fmt=m.preview_page(self.path,self.b,key,1);self.assertEqual((png[1:4],fmt),(b'PNG','pdf'))
+        with self.assertRaises(m.Forbidden):m.preview_page(self.path,self.b,key,2)
+        with self.assertRaisesRegex(ValueError,'Keep at least one page'):self.note('3',format='pdf',base64=base64.b64encode(PDF).decode(),preview_pages='1-2')
+        with self.assertRaisesRegex(ValueError,'has 2 pages'):self.note('3',format='pdf',base64=base64.b64encode(PDF).decode(),preview_pages='5')
+        self.assertEqual(listing['metadata']['pages'],2)
+        with self.assertRaisesRegex(ValueError,'Could not safely read this PDF'):
+            self.note(format='pdf',base64=base64.b64encode(b'%PDF-1.7\nnot really a pdf').decode())
         html=self.note(format='html',content='<script>alert(1)</script><p>Text</p><img src="/api/notes/images/'+('a'*32)+'.png">')
         self.assertEqual(m.resource(self.path,self.a,html)['content'],b'<p>Text</p>')
+    def test_note_pages_and_seller_chosen_previews(self):
+        # A long note is split into pages at block boundaries; the seller picks which pages are free to read.
+        body='\n\n'.join(f'## Section {i}\n\n'+('Lecture detail sentence. '*40) for i in range(1,9))
+        key=self.note(content=body,preview_pages='1, 3')
+        listing=next(l for l in m.state(self.path,self.b)['listings'] if l['id']==key)
+        self.assertEqual(listing['preview_pages'],[1,3]);self.assertGreaterEqual(listing['metadata']['pages'],5)
+        first,fmt=m.preview_page(self.path,self.b,key,1);self.assertEqual(fmt,'markdown');self.assertTrue(first.decode().startswith('## Section 1'))
+        with self.assertRaises(m.Forbidden):m.preview_page(self.path,self.b,key,2)
+        with self.assertRaises(m.Forbidden):m.preview_page(self.path,self.b,key,'1;drop')
+        # Changing the preview pages later needs no new upload; the version stays the same.
+        self.w(self.a,'listing',{'title':'My own notes','subject':'COMP1521','rights':True,'status':'published','preview_pages':'2'},key)
+        listing=next(l for l in m.state(self.path,self.b)['listings'] if l['id']==key)
+        self.assertEqual((listing['preview_pages'],listing['version']),([2],1));self.assertGreaterEqual(listing['metadata']['pages'],5)
+        self.w(self.a,'listing',{'title':'My own notes','subject':'COMP1521','rights':True,'status':'published','preview_pages':''},key)
+        self.assertEqual(next(l for l in m.state(self.path,self.b)['listings'] if l['id']==key)['preview_pages'],[])
+        for bad,why in (('0','like 1-3'),('2-1','like 1-3'),('1-11','at most 10'),('99','pages from 1 to')):
+            with self.assertRaisesRegex(ValueError,why):self.w(self.a,'listing',{'title':'My own notes','subject':'COMP1521','rights':True,'status':'published','preview_pages':bad},key)
+        # Rich notes split by their top-level blocks; a one-page note shows its excerpt only, even with the form's default "1".
+        html=self.note(format='html',content=''.join(f'<h2>Part {i}</h2><p>{"Rich text &amp; detail. "*60}</p>' for i in range(4)),preview_pages='2')
+        page,fmt=m.preview_page(self.path,self.b,html,2);self.assertEqual(fmt,'html');self.assertTrue(page.decode().startswith('<h2>Part'))
+        for spec in (None,'1','1-3'):
+            short=self.note(content='One short page.',**({} if spec is None else {'preview_pages':spec}))
+            self.assertEqual(next(l for l in m.state(self.path,self.b)['listings'] if l['id']==short)['preview_pages'],[],spec)
+        self.assertEqual([len(p)>0 for p in m.paginate('markdown','```\ncode\n\nstill code\n```')],[True])
     def test_money_validation(self):
         self.assertEqual(m.money('22.50'),2250)
         for amount in ('NaN','Infinity','1.999','-1'):

@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict');
 module.exports=async(js,call)=>{
- const wait=async q=>{for(let i=0;i<100;i++){if(await js(q))return;await new Promise(r=>setTimeout(r,100))}throw Error('Study UI timeout: '+q)};
+ const wait=async q=>{for(let i=0;i<100;i++){try{if(await js(q))return}catch{/* page may still be reloading */}await new Promise(r=>setTimeout(r,100))}throw Error('Study UI timeout: '+q)};
  await call('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
  await wait("!!subjectForTopic('Design Principles')");
  await js("window.studyTestSubject=subjectForTopic('Design Principles').id;openSubject(studyTestSubject)");
@@ -19,7 +19,8 @@ module.exports=async(js,call)=>{
  await js("document.querySelector('[data-new-note]').click()");
  assert.equal(await js("document.querySelector('#notebookTopic').value"),'Design Principles');
  await js("document.querySelector('#notebookTopic').value='';document.querySelector('#notebookTitle').value='Organised topic note';document.querySelector('#notebookDocument').textContent='Keep this draft';document.querySelector('#notebookDocument').dispatchEvent(new Event('input'));document.querySelector('[data-action=save]').click()");
- await wait("document.querySelector('#notebookStatus').textContent.includes('Topic or Week')");
+ await wait("document.querySelector('#notebookSaveErrorReason')?.textContent.includes('Choose a Topic or enter a Week')");
+ assert.equal(await js("document.querySelector('#notebookStatus').textContent"),'Not saved · action needed');
  assert.equal(await js("document.querySelector('#notebookDocument').textContent"),'Keep this draft');
  await js("document.querySelector('#notebookTopic').value='Design Principles';document.querySelector('[data-action=save]').click()");
  await wait("document.querySelector('#notebookStatus').textContent==='Saved'");

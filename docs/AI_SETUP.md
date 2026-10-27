@@ -34,6 +34,42 @@ permanent Windows user environment variable and restart the server:
 [Environment]::SetEnvironmentVariable('OLLAMA_MODEL', 'qwen3-vl:4b', 'User')
 ```
 
+## Voice Tutor models (answer + checker)
+
+The Voice Tutor uses two AI roles, set in `ai_models.json`:
+
+- **voice_answer** writes the reply from your note excerpts.
+- **voice_check** reviews that reply against the same excerpts. A rejected reply
+  is rewritten once; if it still fails, the tutor warns you it is unverified.
+
+Each role tries its models top to bottom. A cloud model is skipped until its
+key is set, and any model that errors or runs out of free quota falls through to
+the next, so the local `qwen2.5:7b` (`ollama pull qwen2.5:7b`) is always the
+last resort. Edit the file to reorder models or change names; restarting is not
+needed for model changes.
+
+To add free cloud models, create a file named `.env` in the project folder
+(it is git-ignored) with any of these lines, then restart the server:
+
+```
+GROQ_API_KEY=paste-key-here
+GEMINI_API_KEY=paste-key-here
+OPENROUTER_API_KEY=paste-key-here
+```
+
+Free keys: Groq at https://console.groq.com/keys, Gemini at
+https://aistudio.google.com/apikey, OpenRouter at https://openrouter.ai/keys
+(its free models end in `:free`). Cloud models receive the note excerpts for
+each question, and free tiers may use that data to improve their services, so
+keep sensitive notes on local models. Free model names and limits change; if
+one stops working, check the provider's model list and update `ai_models.json`.
+
+Check every model and key without opening the app:
+
+```powershell
+python tools/check_ai_models.py
+```
+
 ## Optional Gemini free tier
 
 Create an API key in Google AI Studio, then set these values in PowerShell.

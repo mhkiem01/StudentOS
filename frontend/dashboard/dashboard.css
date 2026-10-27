@@ -88,13 +88,9 @@ body{background:var(--bg);font-family:"Segoe UI",Arial,sans-serif}
 }
 /* One home link and menu control across desktop and mobile. */
 #menuToggle{display:grid;flex:0 0 40px;width:40px;height:40px;border:1px solid var(--line);border-radius:11px;background:var(--panel2);cursor:pointer;font-size:20px}
-.portal-home{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--text);padding:4px;border-radius:10px;text-align:left;font:700 14px/1.15 "Segoe UI",Arial,sans-serif;flex-shrink:0;cursor:pointer}
-.portal-home:hover{background:var(--panel2)}
-.portal-home-mark{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:var(--panel2);font-size:26px}
 .portal-topbar{gap:12px;min-height:62px;height:auto}
 .portal-topbar .global-search{min-width:0;flex:1}
 @media(min-width:761px){body.sidebar-hidden .app{grid-template-columns:minmax(0,1fr)}body.sidebar-hidden .sidebar{display:none}.portal-topbar{position:sticky;top:0;background:var(--bg);z-index:40}.portal-topbar .profile-button{flex-shrink:0}}
-@media(min-width:761px) and (max-width:1050px){.portal-home{font-size:12px;gap:5px}.portal-home-mark{width:30px;font-size:23px}.portal-topbar{gap:8px}.portal-topbar .profile-button b,.portal-topbar .profile-button>span:last-child{display:none}}
-@media(max-width:760px){.portal-topbar{gap:8px}.portal-home{grid-column:2;grid-row:1;min-width:0;font-size:13px;gap:6px;justify-self:start}.portal-home-mark{width:28px;height:32px;flex:0 0 28px;font-size:23px}#menuToggle{width:44px;height:44px}.portal-topbar .global-search{width:100%}}
-@media(max-width:350px){.portal-home{font-size:11px;gap:3px}.portal-home-mark{width:23px;flex-basis:23px;font-size:21px}}
+@media(min-width:761px) and (max-width:1050px){.portal-topbar{gap:8px}.portal-topbar .profile-button b,.portal-topbar .profile-button>span:last-child{display:none}}
+@media(max-width:760px){.portal-topbar{gap:8px}#menuToggle{width:44px;height:44px}.portal-topbar .global-search{width:100%}}
 @media(prefers-reduced-motion:reduce){.sidebar{transition:none}}

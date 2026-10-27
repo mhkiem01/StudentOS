@@ -111,7 +111,7 @@ def get(c,key):
     progress=dict(c.execute('SELECT * FROM quick_progress WHERE deck_id=?',(key,)).fetchone());progress['run_seen']=json.loads(progress['run_seen']);deck.update(pages=pages,progress=progress)
     return deck
 def state(c):
-    return {'decks':[get(c,r[0]) for r in c.execute('SELECT id FROM quick_decks ORDER BY updated_at DESC')],'topics':[{'name':r['name'],'subject_id':r['subject_id'],'subject':r['subject']} for r in c.execute('SELECT t.name,s.id AS subject_id,s.name AS subject FROM topics t LEFT JOIN subject_topics st ON st.topic_name=t.name LEFT JOIN subjects s ON s.id=st.subject_id ORDER BY s.name,t.name')]}
+    return {'decks':[get(c,r[0]) for r in c.execute('SELECT id FROM quick_decks ORDER BY updated_at DESC')],'topics':[{'name':r['name'],'subject_id':r['subject_id'],'subject':r['subject']} for r in c.execute('SELECT t.name,s.id AS subject_id,s.name AS subject FROM topics t LEFT JOIN subject_topics st ON st.topic_name=t.name LEFT JOIN subjects s ON s.id=st.subject_id WHERE t.parent_topic IS NULL ORDER BY s.name,t.name')]}
 def validate_pages(pages,maximum):
     if not isinstance(pages,list) or not 1<=len(pages)<=1000:raise ValueError('A deck needs 1–1000 pages.')
     clean=[];ids=set()

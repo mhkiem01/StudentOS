@@ -21,7 +21,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await call('Page.navigate',{url:base});await wait("document.querySelectorAll('.week-hour').length===24");await wait("getComputedStyle(document.querySelector('.app')).gridTemplateColumns.startsWith('190px')");
  assert.equal(await js("document.querySelectorAll('.week-day-row').length"),7);
  assert.equal(await js("document.querySelectorAll('.nav [data-view=timetable],.nav [data-view=reminders],.nav [data-view=progress]').length"),0);
- assert.equal(await js("document.querySelectorAll('#subjectsSubnav [data-view]').length"),3);
+ assert.deepEqual(await js("[...document.querySelectorAll('#subjectsSubnav [data-view]')].map(b=>b.dataset.view)"),['library','deep-practice','flashcards','notes']);
  assert(await js("document.querySelector('.portal-welcome').textContent.includes('Test Student')"));
  assert.equal(await js("document.querySelector('[data-week-event=\"dash-event-0\"]').style.left"),'646px');
  assert.equal(await js("document.querySelector('[data-week-event=\"dash-event-0\"]').style.width"),'136px');
@@ -38,22 +38,22 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  assert(await js("(()=>{const statuses=[...document.querySelectorAll('.dashboard-reminder-list [data-status]')].map(e=>e.value);return statuses.slice(statuses.indexOf('done')).every(s=>s==='done')})()"));
  assert.equal(await js("document.querySelectorAll('.dash-reminder').length"),5);
  let data=await fetch(base+'/api/portal').then(r=>r.json());assert.equal(data.reminders.find(r=>r.id==='dash-reminder-0').status,'done');
- await js("document.querySelector('#subjectsToggle').click()");
+ await js("if(document.querySelector('#subjectsToggle').getAttribute('aria-expanded')!=='true')document.querySelector('#subjectsToggle').click();document.querySelector('#subjectsToggle').click()");
  assert.equal(await js("localStorage.getItem('portal.subjectsExpanded')"),'false');
  await call('Page.navigate',{url:base+'/?reload=1'});await wait("document.querySelectorAll('.week-hour').length===24");
  assert.equal(await js("document.querySelector('#subjectsToggle').getAttribute('aria-expanded')"),'false');
  assert.equal(await js("document.querySelector('[data-status=\"dash-reminder-0\"]').value"),'done');
  await js("document.querySelector('#subjectsToggle').click()");
  for(const v of ['library','flashcards','notes','tutor','settings','home']){await js(`document.querySelector('.nav [data-view=${v}]').click()`);assert(await js(`document.querySelector('#view-${v}').classList.contains('active')`))}
- await js("document.querySelector('.portal-home').click();document.querySelector('[data-new-reminder]').click()");
+ await js("document.querySelector('.sidebar .brand').click();document.querySelector('[data-new-reminder]').click()");
  assert(await js("!!document.querySelector('.reminders-form')"));await js("document.querySelector('[data-cancel]').click()");
- for(const v of ['import','flashcard-import','timetable']){await js(`document.querySelector('#portalDashboard [data-go="${v}"]').click()`);assert(await js(`document.querySelector('#view-${v}').classList.contains('active')`));await js("document.querySelector('.portal-home').click()")}
+ for(const v of ['import','flashcard-import','timetable']){await js(`document.querySelector('#portalDashboard [data-go="${v}"]').click()`);assert(await js(`document.querySelector('#view-${v}').classList.contains('active')`));await js("document.querySelector('.sidebar .brand').click()")}
  // Exercise the existing import/study engines, not just their navigation links.
  await js("showView('import');document.querySelector('#loadSampleBtn').click();document.querySelector('#generateBtn').click()");
  await wait("state.topics['Design Principles']?.length===2");
  await new Promise(r=>setTimeout(r,1000)); // Existing import success navigates after 900ms.
  assert(await js("validateQuiz('not a valid quiz',null).errors.length>0"));
- await js("state.subjects.computing.topics.push('Design Principles');save();startQuiz('Design Principles');submitAnswer('A');goNextQuestion();submitAnswer('B');goNextQuestion()");
+ await js("state.subjects.computing.topics.push('Design Principles');save();startQuiz('Design Principles',false,true);submitAnswer('A');goNextQuestion();submitAnswer('B');goNextQuestion()");
  assert(await js("document.querySelector('#view-results').classList.contains('active')"));
  assert.equal(await js("state.latestResults['Design Principles'].correct"),2);
  const previousReviews=await js("Object.values(state.flashcardProgress['Networking Fundamentals']||{})[0]?.reviews||0");
@@ -65,7 +65,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await wait("document.querySelector('#notebookStatus').textContent==='Saved'");
  await js("document.querySelector('[data-action=close]').click()");
  await wait("!document.querySelector('.notebook-editor') && document.querySelector('#notebookCards').textContent.includes('Dashboard regression note')");
- await js("document.querySelector('.portal-home').click()");
+ await js("document.querySelector('.sidebar .brand').click()");
  assert.equal(await js("document.querySelectorAll('.dash-stat strong')[0].textContent"),'1');
  assert.equal(await js("document.querySelectorAll('.dash-stat strong')[1].textContent"),String(previousReviews+1));
  await call('Emulation.setDeviceMetricsOverride',{width:1035,height:800,deviceScaleFactor:1,mobile:false});
@@ -78,7 +78,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  assert(await js("document.querySelector('.week-scroll').scrollWidth>document.querySelector('.week-scroll').clientWidth"));
  await js("document.querySelector('#menuToggle').click()");assert(await js("document.body.classList.contains('nav-open')"));
  await js("document.querySelector('.nav [data-view=notes]').click()");assert.equal(await js("document.body.classList.contains('nav-open')"),false);
- await js("document.querySelector('.portal-home').click()");
+ await js("document.querySelector('.sidebar .brand').click()");
  const mobile=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});fs.writeFileSync(path.join(os.tmpdir(),'student-dashboard-mobile.png'),Buffer.from(mobile.data,'base64'));
  await require('../planner/calendar_fading.js')(js);
  await require('../planner/week_popup_browser.js')(js,call);
@@ -86,7 +86,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
  await require('../planner/general_todos_browser.js')(js,call);
  await require('../finance/finance_browser.js')(js,call);
  await require('../study/study_progress_browser.js')(js,call);
+ await require('../study/subject_quizzes_browser.js')(js,call);
+ await require('../assistant/voice_tutor_browser.js')(js,call);
  await require('../social/social_browser.js')(js,call);
  await require('../marketplace/marketplace_browser.js')(js,call);
+ await require('./startup_resilience_browser.js')(js,call);
  assert.deepEqual(errors,[]);console.log('PASS dashboard: 24-hour grid, accurate half-hour positioning, sticky days, status persistence, completed visibility, saved display name, collapsed nav persistence, existing pages, quick actions, desktop proportions, mobile drawer and no page overflow.');ws.close();
 })().catch(e=>{console.error(e);process.exit(1)});

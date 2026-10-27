@@ -69,3 +69,17 @@ class GymTests(unittest.TestCase):
         self.write('workout',w,id='w');sid=self.write('start',{**w,'date':'2026-09-20'})['id']
         self.write('delete_workout',id='w');self.assertEqual(self.state()['sessions'][0]['data']['name'],'Custom')
         with self.assertRaises(ValueError):self.write('workout',{**w,'exercises':w['exercises']*2})
+    def test_add_library_exercise_to_active_workout(self):
+        self.enable();sid=self.start()
+        self.write('add_exercise',dict(session_id=sid,exercise=dict(id='treadmill',sets=1,reps=20,unit='minutes')))
+        w=self.state()['sessions'][0]['data'];self.assertEqual([e['id'] for e in w['exercises']],['bench','treadmill']);self.assertEqual(w['cursor'],1);self.assertEqual(w['exercises'][1]['unit'],'minutes')
+        self.write('set',dict(session_id=sid,exercise_id='treadmill',position=1,weight=0,reps=25))
+        self.write('add_exercise',dict(session_id=sid,exercise=dict(id='bench',sets=3,reps=10)))
+        w=self.state()['sessions'][0]['data'];self.assertEqual(len(w['exercises']),2);self.assertEqual(w['cursor'],0);self.assertEqual(w['exercises'][0]['sets'],2)
+        for bad in [None,dict(id='x',sets=0,reps=8),dict(id='y',sets=3,reps=8,unit='laps')]:
+            with self.assertRaises(ValueError):self.write('add_exercise',dict(session_id=sid,exercise=bad))
+        self.assertEqual(len(self.state()['sessions'][0]['data']['exercises']),2)
+        for i in range(18):self.write('add_exercise',dict(session_id=sid,exercise=dict(id=f'e{i}',sets=1,reps=5)))
+        with self.assertRaises(ValueError):self.write('add_exercise',dict(session_id=sid,exercise=dict(id='one-too-many',sets=1,reps=5)))
+        self.write('finish',{'session_id':sid})
+        with self.assertRaises(ValueError):self.write('add_exercise',dict(session_id=sid,exercise=dict(id='late',sets=1,reps=5)))

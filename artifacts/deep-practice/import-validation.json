@@ -1,0 +1,42 @@
+{
+  "status": "complete",
+  "counts": {
+    "questions": 98,
+    "topics": 50,
+    "matched": 98,
+    "answers": 98,
+    "mcq": 11,
+    "graded_mcq": 11,
+    "types": {
+      "explain": 21,
+      "mcq": 11,
+      "trace": 16,
+      "recall": 7,
+      "debug": 10,
+      "implementation": 32,
+      "fill_blank": 1
+    },
+    "difficulties": {
+      "Foundation": 11,
+      "Developing": 28,
+      "Challenging": 9,
+      "Task-level": 50
+    },
+    "stages": {
+      "Recall": 8,
+      "Understanding": 22,
+      "Application": 24,
+      "Transfer": 8,
+      "Debugging": 9,
+      "Implementation": 21,
+      "Integration": 8
+    },
+    "code_blocks": 34,
+    "tables": 0,
+    "checklist_items": 8,
+    "sections": 5,
+    "lines": 2436,
+    "unplaced_lines": 0
+  },
+  "issues": []
+}

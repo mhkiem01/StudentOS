@@ -38,3 +38,14 @@ python tests/support/run_browser_check.py --finance
 ```
 
 The browser runner requires Node and Microsoft Edge on Windows. Both commands use temporary fixture databases, not your real financial records. Coverage includes opening/negative balances, date cutoffs, savings totals, bill double-counting, recurrence, duplicate receipts, undo/pause/delete, migrations/reopen persistence, existing Finance workflows and 320/390/744px layouts.
+
+## Plan ahead (Overview)
+
+- **Plan ahead:** choose end of this week, end of next week, end of this month, in 4 weeks, or any date up to 26 weeks ahead. It shows the balance you'll have then, the cash that is free after goal savings, the lowest point before then, and every item with a running balance. If you would drop below your minimum, it says how much more to earn and by which date.
+- **Week by week:** money in, money out, goal savings, end balance and free cash for the next 8 (or 26) weeks. "Earn $X more" is the extra income needed by the end of that week; it is counted once, so earning it early also covers later weeks. The header shows the weekly saving needed to reach every goal on time.
+- **Recent activity:** your latest entries grouped by day, with the balance after each one.
+- **Money flow:** where money came from (by income source) and where it went (by category, with the biggest items), for this week, this month, last month or the last 3 months, compared with the previous period. Also on the Insights page.
+
+The forecast only uses what you entered: scheduled pay not yet received (overdue pay is not assumed), unpaid bills (overdue bills count as due now), future-dated entries, and optionally your budget limits as everyday spending. A budget's estimate is reduced by bills, planned expenses and spending already recorded in that category that week, so nothing is counted twice. Goal savings stay in your balance but are not free to spend. Same-day money out is applied before money in, so the lowest point is never understated.
+
+**Warn me below** sets the minimum balance the planner protects (default $0). **Count everyday spending from my budgets** can be turned off if you only want scheduled items. Both are saved with your Finance preferences.

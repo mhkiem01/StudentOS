@@ -47,6 +47,8 @@ def model(payload,on_progress=None):
 
 with tempfile.TemporaryDirectory(prefix='portal-chat-tests-') as tmp:
     original=server.ROOT;server.ROOT=Path(tmp);server.DB_PATH=Path(tmp)/'test.db';server.init_db();server.ROOT=original
+    # Backups made while serving (e.g. before a Finance reset) stay in the temporary folder, not the project's backups/.
+    server.backups_path=lambda:Path(tmp)/'backups'
     server.import_state({'subjects':{'computing':{'name':'Computing','topics':['Networks']},'math':{'name':'Mathematics','topics':['Algebra']}},'topics':{'Networks':[],'Algebra':[]}})
     if '--notes' in sys.argv:
         for i in range(5):
@@ -56,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='portal-chat-tests-') as tmp:
         ai_provider.note_study=lambda note,kind:{'ok':True,'text':'Front: What does TCP provide?\nBack: Ordered delivery.\nExplain: It is reliable transport.' if kind=='flashcards' else 'Question: What does TCP provide?\nAnswer choices:\nA. Ordered delivery\nB. Screen brightness\nC. Power supply\nD. File names\nAnswer: A\nExplain: TCP is reliable transport.'}
     ai_provider._ollama_chat=model
     ai_provider.status=lambda:{'online':True,'model_available':True,'model':'test-model','provider':'ollama'}
-    httpd=ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),server.Handler)
+    httpd=server.PortalServer(('127.0.0.1',int(sys.argv[1])),server.Handler)
     httpd.accounts_path=Path(tmp)/'accounts.db'
     accounts.initialize(httpd.accounts_path,admin_name='Test Student',password='Fixture-password-123!',must_change=False)
     print('READY',flush=True)

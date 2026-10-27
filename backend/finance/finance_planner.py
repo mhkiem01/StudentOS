@@ -4,6 +4,7 @@ from contextlib import closing
 from datetime import date,datetime,timedelta
 from decimal import Decimal
 from calendar_store import parse_date
+import finance_forecast
 
 def migrate(path,backups):
  with closing(sqlite3.connect(path)) as c:
@@ -114,3 +115,4 @@ def enrich(c,result,day,f):
  period_entries=[t for t in ledger if result['summary']['month_start']<=t['date']<=result['summary']['month_end'] and t['date']<=asof]
  result['balance']['period_income']=sum(t['amount'] for t in period_entries if t['kind']=='income')
  result['balance']['period_spending']=sum(t['amount'] for t in period_entries if t['kind']=='expense')
+ finance_forecast.build(result,f)

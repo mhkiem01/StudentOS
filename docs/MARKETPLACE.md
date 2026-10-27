@@ -2,7 +2,8 @@
 
 The existing portal now has a shared Marketplace → Notes / Tutoring Program.
 All students must use accounts on the **same portal server**. Separate local
-installations do not discover each other. No demo accounts or listings are seeded.
+installations do not discover each other. No demo accounts or listings are seeded
+automatically; see **Example data** below to add some on purpose.
 
 ## Available workflows
 
@@ -13,6 +14,45 @@ installations do not discover each other. No demo accounts or listings are seede
 - Public text excerpt preview with an expanded reading dialog. Full files are
   never embedded in public listing JSON. Full downloads require seller ownership
   or an acquired resource, checked on the server.
+- **Free preview pages chosen by the seller** (see below): anyone can read those
+  pages before buying; the other pages show a locked placeholder.
+
+## Free preview pages
+
+In the seller form, **Free preview pages** takes pages or ranges such as `1`,
+`1-2, 5` or `1, 3`, with at most 10 pages. Leave it empty for excerpt only. It
+defaults to page 1, and at least one page always stays for buyers. A single-page
+resource therefore shows its excerpt only.
+
+- **PDF:** the chosen pages are rendered to PNG once, when the version is saved,
+  in a separate pypdfium2 process (the bundled `.marketplace-deps`).
+- **Markdown and Portal Notes:** these are split into pages of about one printed
+  page (~1,500 characters) on top-level blocks. Code fences are never split, and
+  a heading near the end of a page starts the next one. The page's Markdown or
+  sanitised HTML is shown as paper.
+- **Storage:** previews live in `market_previews`, pinned to the listing version.
+  Changing only the page list regenerates them for the current version without
+  creating a new version.
+- **Access:** `GET /api/marketplace/preview/<listing>/<page>` serves only pages
+  the seller chose; any other page returns 403. Listing JSON carries `preview_pages` and
+  `metadata.pages`, never the content.
+- **In the app:** listing cards show "👁 N free pages". The detail panel has page
+  chips, ◀ ▶ navigation, locked placeholders for buyer-only pages and a ⛶ larger
+  reading dialog.
+
+## Example data
+
+`python tools/demo_data.py add` adds clearly labelled demo students, 13 note
+listings, tutors, clubs and posts. It makes a verified backup in `data/backups`
+first, and the demo accounts cannot sign in. Each demo listing is about 4 pages
+with its own seller-chosen free pages. "Data Structures — Complete Lecture
+Notes" is a real PDF with pages 1 and 3 free. "Contract Law Case Summaries"
+previews pages 1 and 4. "Physics Lab Report Template" deliberately has none.
+
+- `python tools/demo_data.py previews` updates demo listings added before preview
+  pages existed. It leaves every other listing alone.
+- `python tools/demo_data.py remove` deletes all demo content, including your
+  own activity on it.
 - Free acquisitions, protected downloads, library, verified reviews and reports.
 - Editable acquired Markdown/Portal Notes import into **existing** Subjects,
   Topics/Weeks and the normal Notes Editor. The buyer owns an independent copy.
@@ -73,16 +113,16 @@ is used to construct tutor availability.
 This is a functioning initial implementation, **not every enhancement in the
 89-section brief**:
 
-- PDF preview is a seller-written public excerpt, not generated selected-page
-  PDF rendering. No page/zoom controls, cover upload, or automatic PDF conversion.
+- Preview pages are fixed images/paper pages: no zoom control, cover upload, or
+  automatic PDF conversion. Note page breaks are approximate, not print layout.
 - Downloads retain their source format. Markdown/Portal Notes are not converted
   to PDF; PDF-only purchases are not presented as editable rich text.
 - Create missing subjects/topics in the existing Subjects area before importing.
   No-topic imports require a numbered Week, matching existing Notes validation.
 - Default tutor rate only; per-subject rate overrides and detailed calendar-style
   tutor schedule are not yet implemented. No multi-seat sessions or online status.
-- Marketplace-wide currency changes, paid checkout/refunds/payouts, page-level
-  PDF previews and richer seller sales/earnings reporting remain future work.
+- Marketplace-wide currency changes, paid checkout/refunds/payouts and richer
+  seller sales/earnings reporting remain future work.
 - Reporting is stored for administrators; listing takedown and report resolution
   are implemented. Automated copyright/malware scanning and formal review appeals
   are not. File signatures/size checks do not guarantee a file is safe to open.

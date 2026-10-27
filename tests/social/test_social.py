@@ -13,6 +13,30 @@ class SocialTests(unittest.TestCase):
  def friend(self):self.w(self.a,'friend',{'user_id':self.b,'operation':'request'});self.w(self.b,'friend',{'user_id':self.a,'operation':'accept'})
  def room(self,kind='project',private=False):return self.w(self.a,'space',{'kind':kind,'name':'Real test project','private':private})['id']
  def join(self,key):self.friend();self.w(self.a,'membership',{'operation':'invite','user_id':self.b},key);self.w(self.b,'membership',{'operation':'accept_invite'},key)
+ def test_task_board_moves_log_and_delete(self):
+  key=self.room();self.join(key)
+  first=self.w(self.a,'task',{'space_id':key,'title':'Research'})['id'];second=self.w(self.b,'task',{'space_id':key,'title':'Slides'})['id']
+  project=lambda:s.state(self.path,self.a)['spaces'][0];tasks=lambda:{t['title']:t for t in project()['tasks']}
+  self.assertEqual([tasks()[t]['data']['position'] for t in ('Research','Slides')],[0,1]);self.assertEqual(tasks()['Slides']['data']['created_by'],self.b)
+  # Dragging changes only the column and place; each status change is logged with who did it.
+  self.w(self.b,'task_move',{'status':'in_progress','position':-1},first);self.w(self.a,'task_move',{'status':'in_progress','position':-2},second);self.w(self.b,'task_move',{'status':'done','position':0},first)
+  log=lambda:[(x['actor'],x['kind'],x['data'].get('title'),x['data'].get('from'),x['data'].get('to')) for x in reversed(project()['activity'])]
+  self.assertEqual(log(),[(self.a,'task_created','Research',None,'todo'),(self.b,'task_created','Slides',None,'todo'),(self.b,'task_status','Research','todo','in_progress'),(self.a,'task_status','Slides','todo','in_progress'),(self.b,'task_done','Research','in_progress','done')])
+  self.assertEqual((tasks()['Research']['data']['status'],tasks()['Slides']['data']['position']),('done',-2))
+  # Reordering inside a column is saved without adding to the log.
+  self.w(self.a,'task_move',{'status':'in_progress','position':4.5},second);self.assertEqual(len(log()),5);self.assertEqual(tasks()['Slides']['data']['position'],4.5)
+  for bad in ({'status':'nope','position':1},{'status':'todo','position':'1'},{'status':'todo','position':float('inf')},{'status':'todo','position':True}):
+   with self.subTest(bad=bad),self.assertRaises(ValueError):self.w(self.a,'task_move',bad,second)
+  with self.assertRaises(s.Forbidden):self.w(self.c,'task_move',{'status':'todo','position':0},second)
+  # Edits name the fields that changed; creator and position survive an edit.
+  t=tasks()['Slides'];self.w(self.a,'task',{'space_id':key,'title':'Slides v2','status':'in_progress','priority':'high','updated_at':t['updated_at']},second)
+  self.assertEqual(log()[-1][:2],(self.a,'task_updated'));self.assertEqual(project()['activity'][0]['data']['fields'],['priority','title'])
+  self.assertEqual((tasks()['Slides v2']['data']['created_by'],tasks()['Slides v2']['data']['position']),(self.b,4.5))
+  # Only the project owner or the task's creator can delete a task, and the deletion is logged.
+  with self.assertRaises(s.Forbidden):self.w(self.b,'task_delete',{},first)
+  self.w(self.b,'task_delete',{},second);self.w(self.a,'task_delete',{},first)
+  self.assertEqual(tasks(),{});self.assertEqual([x[:3] for x in log()[-2:]],[(self.b,'task_deleted','Slides v2'),(self.a,'task_deleted','Research')])
+  with self.assertRaises(ValueError):self.w(self.a,'task_delete',{},first)
  def test_profile_privacy_toggle(self):
   self.w(self.a,'profile',{'university':'UNSW','subjects':['COMP1521'],'bio':'Hello'})
   view=next(p for p in s.state(self.path,self.b)['people'] if p['id']==self.a)

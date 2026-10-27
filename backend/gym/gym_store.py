@@ -44,11 +44,11 @@ def profile(con):
     row=con.execute('SELECT data FROM gym_profile WHERE id=1').fetchone()
     return {**DEFAULTS,**(json.loads(row[0]) if row else {})}
 def state(con):
-    import gym_journey
+    import gym_journey, gym_plan
     if not con.in_transaction: con.execute('BEGIN IMMEDIATE')
     p=profile(con)
     journey=gym_journey.progress(con,p)
-    result={'profile':p,'journey':journey}
+    result={'profile':p,'journey':journey,'plan_progress':gym_plan.progress(con,p)}
     result['calendar_workouts']=[{**dict(r),'workout':json.loads(r['workout'])} for r in con.execute('SELECT e.*,g.workout FROM gym_calendar_links g JOIN timetable_events e ON e.id=g.event_id ORDER BY e.event_date,e.start_time')]
     for key in ['workouts','sessions','measurements','food_logs']:
         result[key]=[{**dict(r),'data':json.loads(r['data'])} for r in con.execute('SELECT * FROM gym_'+key+' ORDER BY rowid DESC')]
@@ -67,9 +67,10 @@ def nutrition(data):
     age=number(data.get('age'),'Age',18,100)
     sex=data.get('sex'); activity=data.get('activity'); goal=data.get('goal')
     factors={'sedentary':1.2,'light':1.375,'moderate':1.55,'very':1.725,'high':1.9}
-    if sex not in ('male','female') or activity not in factors or goal not in ('lose','maintain','gain'): raise ValueError('Choose a calculation profile, activity level and nutrition goal.')
+    if sex not in ('male','female','unspecified') or activity not in factors or goal not in ('lose','maintain','gain'): raise ValueError('Choose a calculation profile, activity level and nutrition goal.')
     if data.get('adult_confirmation') is not True: raise ValueError('Confirm this adult estimate is appropriate for you. It is not for pregnancy, breastfeeding or medical dietary needs.')
-    bmr=10*weight+6.25*height-5*age+(5 if sex=='male' else -161)
+    # 'unspecified' uses the midpoint of the two published coefficients (-78).
+    bmr=10*weight+6.25*height-5*age+{'male':5,'female':-161,'unspecified':-78}[sex]
     calories=round(bmr*factors[activity]*{'lose':.9,'maintain':1,'gain':1.1}[goal])
     # 1.4–2.0 g/kg/day range for exercising adults: ISSN 2017,
     # https://pmc.ncbi.nlm.nih.gov/articles/PMC5477153/ . Use 1.4 maintenance,
@@ -90,10 +91,15 @@ def workout(data):
         sets=number(r.get('sets'),'Sets',1,10);reps=number(r.get('reps'),'Reps',1,100)
         if sets!=int(sets) or reps!=int(reps): raise ValueError('Sets and reps must be whole numbers.')
         unit=r.get('unit','reps')
-        if unit not in ('reps','seconds'): raise ValueError('Exercise unit must be reps or seconds.')
+        if unit not in ('reps','seconds','minutes'): raise ValueError('Exercise unit must be reps, seconds or minutes.')
         maximum=number(r.get('reps_max',reps),'Upper rep/duration target',reps,100)
         if maximum!=int(maximum): raise ValueError('Upper target must be a whole number.')
-        clean.append(dict(id=eid,name=text(r.get('name',eid),'exercise name',120),unit=unit,reps_max=int(maximum),sets=int(sets),reps=int(reps),weight=None if r.get('weight') in (None,'') else number(r['weight'],'Target weight',0,600)))
+        row=dict(id=eid,name=text(r.get('name',eid),'exercise name',120),unit=unit,reps_max=int(maximum),sets=int(sets),reps=int(reps),weight=None if r.get('weight') in (None,'') else number(r['weight'],'Target weight',0,600))
+        if r.get('rest') not in (None,''):
+            rest=number(r['rest'],'Rest',0,600)
+            if rest!=int(rest): raise ValueError('Rest must be whole seconds.')
+            row['rest']=int(rest)  # planned rest between sets, used by the workout timer
+        clean.append(row)
     return dict(name=name,exercises=clean,level=text(data.get('level','custom'),'level',30),duration=int(number(data.get('duration',45),'Duration',5,240)))
 
 def write(con, payload):
@@ -108,8 +114,8 @@ def write(con, payload):
         p.update(data);con.execute('INSERT INTO gym_profile VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',(encode(p),))
         return {'ok':True}
     if not p['enabled']: raise ValueError('Enable Gym in Settings first. Your saved data is kept.')
-    import gym_journey
-    if gym_journey.write(con,action,data,ident,p): return {'ok':True,'id':ident}
+    import gym_journey, gym_plan
+    if gym_journey.write(con,action,data,ident,p) or gym_plan.write(con,action,data,ident,p): return {'ok':True,'id':ident}
     if action=='workout':
         w=workout(data);con.execute('INSERT INTO gym_workouts VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at',(ident,encode(w),stamp()))
     elif action=='delete_workout': con.execute('DELETE FROM gym_workouts WHERE id=?',(ident,))
@@ -119,7 +125,7 @@ def write(con, payload):
         w=workout(data);w['cursor']=0;chosen=day(data.get('date'))
         if chosen>date.today().isoformat():raise ValueError('Use the weekly plan for future workouts, not a workout log.')
         con.execute("INSERT INTO gym_sessions VALUES(?,?,'active',?,?,NULL)",(ident,chosen,encode(w),stamp()))
-    elif action in ('cursor','session_date','set','finish','cancel'):
+    elif action in ('cursor','session_date','set','finish','cancel','add_exercise'):
         row=con.execute("SELECT * FROM gym_sessions WHERE id=?",(data.get('session_id'),)).fetchone()
         if not row: raise ValueError('Workout session not found.')
         if row['status']!='active':
@@ -132,6 +138,15 @@ def write(con, payload):
             con.execute('UPDATE gym_sessions SET date=? WHERE id=?',(chosen,row['id']))
         elif action=='cursor':
             pos=int(number(data.get('cursor'),'Exercise',0,len(w['exercises'])-1));w['cursor']=pos
+            con.execute('UPDATE gym_sessions SET data=? WHERE id=?',(encode(w),row['id']))
+        elif action=='add_exercise':
+            extra=data.get('exercise')
+            if not isinstance(extra,dict): raise ValueError('Choose an exercise to add.')
+            ids=[r['id'] for r in w['exercises']]
+            if extra.get('id') not in ids:
+                if len(ids)>=20: raise ValueError('A workout can hold up to 20 exercises. Finish this one to log more.')
+                w['exercises']=workout(dict(name=w['name'],exercises=w['exercises']+[extra]))['exercises']
+            w['cursor']=[r['id'] for r in w['exercises']].index(extra.get('id'))
             con.execute('UPDATE gym_sessions SET data=? WHERE id=?',(encode(w),row['id']))
         elif action=='set':
             eid=data.get('exercise_id')

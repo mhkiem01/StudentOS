@@ -1,0 +1,24 @@
+/* Live note sharing: share dialog, cards in Messages and the shared badge in the note editor. */
+.share-dialog{width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--panel);color:var(--text);box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.share-dialog::backdrop{background:rgba(10,12,30,.55)}
+.share-inner{display:grid;gap:14px;padding:20px 22px}.share-inner header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.share-inner h2{margin:4px 0 0;font-size:20px;overflow-wrap:anywhere}.share-inner h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.share-inner p{margin:0;line-height:1.55}
+.share-eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)}
+.share-x{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:10px;width:40px;height:40px;font-size:20px;cursor:pointer;flex:0 0 40px}
+.share-inner label{display:grid;gap:6px;font-size:13px;font-weight:600}.share-inner select{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);font:inherit;font-size:14px}
+.share-friends{display:grid;gap:8px;margin-bottom:12px}.share-friends label{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-weight:600;cursor:pointer}.share-friends input{width:18px;height:18px}
+.share-people{list-style:none;margin:0;padding:0;display:grid;gap:8px}.share-people li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--line);border-radius:10px}.share-people b{flex:1;min-width:100px}.share-people select{padding:6px 8px}
+.share-request{padding:2px 8px;border-radius:999px;background:color-mix(in srgb,#f59e0b 18%,var(--panel));color:#b45309;font-size:11px;font-weight:700}body.dark .share-request{color:#fbbf24}
+.share-error{color:#dc2626;font-size:13px}.share-error:empty{display:none}body.dark .share-error{color:#ff8a80}
+.share-inner footer{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
+.share-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:980;margin:0;padding:12px 18px;border-radius:12px;background:#0e1020;color:#f3f4ff;box-shadow:0 12px 30px rgba(0,0,0,.35);font-size:13px;max-width:calc(100vw - 32px)}.share-toast[hidden]{display:none}
+/* Card in a message */
+.share-card{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);max-width:460px}.share-card:empty{display:none}
+.share-card>div{flex:1;min-width:150px}.share-card b{display:block;font-size:13px;overflow-wrap:anywhere}.share-card small{display:block;color:var(--muted);font-size:11px}.share-icon{font-size:22px}
+.soc-message .share-card .soc-button{min-height:32px;padding:5px 10px;font-size:11px}
+/* Note editor and notes list */
+.notebook-shared-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--primary) 14%,transparent);color:var(--primary);font-size:12px;font-weight:700}
+.notebook-card.shared{border-style:dashed}.notebook-card.shared>span{color:var(--primary)}
+.notebook-document[contenteditable=false]{cursor:default}
+@media(max-width:700px){.share-inner{padding:16px}.share-inner select{font-size:16px}.share-inner footer .btn{flex:1}}
+/* View-only shared notes hide editing tools; the editor's own layout rules must not bring them back. */
+.notebook-editor [hidden]{display:none!important}

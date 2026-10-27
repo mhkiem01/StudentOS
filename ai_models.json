@@ -1,0 +1,143 @@
+{
+  "_help": "Each role tries its models top to bottom. Cloud steps are skipped until their API key is in .env (see docs/AI_SETUP.md). Never put keys in this file.",
+  "providers": {
+    "local": {
+      "type": "ollama"
+    },
+    "groq": {
+      "type": "openai_compatible",
+      "base_url": "https://api.groq.com/openai/v1",
+      "api_key_env": "GROQ_API_KEY"
+    },
+    "gemini": {
+      "type": "openai_compatible",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "api_key_env": "GEMINI_API_KEY"
+    },
+    "openrouter": {
+      "type": "openai_compatible",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY"
+    }
+  },
+  "roles": {
+    "voice_answer": [
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b"
+      },
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-20b"
+      },
+      {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      {
+        "provider": "openrouter",
+        "model": "google/gemma-4-31b-it:free"
+      },
+      {
+        "provider": "openrouter",
+        "model": "qwen/qwen3.8-27b:free"
+      },
+      {
+        "provider": "local",
+        "model": "qwen2.5:7b",
+        "options": {
+          "num_ctx": 6144,
+          "num_predict": 700
+        }
+      }
+    ],
+    "voice_question": [
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b"
+      },
+      {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-20b"
+      },
+      {
+        "provider": "local",
+        "model": "qwen2.5:7b",
+        "options": {
+          "num_ctx": 4096,
+          "num_predict": 300
+        }
+      }
+    ],
+    "voice_grade": [
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b"
+      },
+      {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-20b"
+      },
+      {
+        "provider": "local",
+        "model": "qwen2.5:7b",
+        "options": {
+          "num_ctx": 4096,
+          "num_predict": 300
+        }
+      }
+    ],
+    "voice_check": [
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-20b"
+      },
+      {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      {
+        "provider": "openrouter",
+        "model": "google/gemma-4-26b-a4b-it:free"
+      },
+      {
+        "provider": "local",
+        "model": "qwen2.5:7b",
+        "options": {
+          "num_ctx": 6144,
+          "num_predict": 300
+        }
+      }
+    ],
+    "ctf_review": [
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b"
+      },
+      {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-20b"
+      },
+      {
+        "provider": "local",
+        "model": "qwen2.5-coder:7b",
+        "options": {
+          "num_ctx": 8192,
+          "num_predict": 800
+        }
+      }
+    ]
+  }
+}

@@ -12,10 +12,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-def preview(content, count=3):
-    if int(count) not in (1,3,5):raise ValueError('Choose 1, 3 or 5 preview pages.')
+def preview(content, pages=()):
+    """Render the chosen 1-based pages. Returns {'pages': total, 'images': {'<page>': base64 PNG}}."""
     try:
-        r=subprocess.run([sys.executable,str(Path(__file__).resolve()),str(count)],input=content,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=25,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        r=subprocess.run([sys.executable,str(Path(__file__).resolve()),json.dumps([int(p) for p in pages])],input=content,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=25,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     except subprocess.TimeoutExpired:raise ValueError('PDF preview took too long. Try a smaller/simpler PDF.')
     if r.returncode:raise ValueError('Could not safely read this PDF. Use an unencrypted PDF and install requirements-marketplace.txt.')
     try:result=json.loads(r.stdout)
@@ -29,14 +29,15 @@ def worker():
     if len(raw)>8*1024*1024:raise ValueError('PDF is too large.')
     doc=pdfium.PdfDocument(raw);total=len(doc)
     if not 1<=total<=10000:raise ValueError('Unsupported page count.')
-    result={'pages':total,'images':[]}
-    # Always leave at least one page protected, even if a free listing is later priced.
-    for index in range(min(int(sys.argv[1]),max(0,total-1))):
-        page=doc[index];w,h=page.get_size()
+    result={'pages':total,'images':{}}
+    # Pages beyond the document are skipped; the store tells the seller which pages exist.
+    for number in json.loads(sys.argv[1])[:10]:
+        if not 1<=number<=total:continue
+        page=doc[number-1];w,h=page.get_size()
         if not 1<=w<=20000 or not 1<=h<=20000:raise ValueError('Unsupported page dimensions.')
         scale=min(1100/w,1500/h,2)
         bitmap=page.render(scale=scale,may_draw_forms=False);im=bitmap.to_pil();out=io.BytesIO();im.save(out,format='PNG')
-        result['images'].append(base64.b64encode(out.getvalue()).decode('ascii'))
+        result['images'][str(number)]=base64.b64encode(out.getvalue()).decode('ascii')
         im.close();bitmap.close();page.close()
     doc.close();sys.stdout.write(json.dumps(result))
 
