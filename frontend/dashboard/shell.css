@@ -1,0 +1,224 @@
+/* App shell: sidebar, top bar and Settings.
+   Loaded after every other stylesheet; it refines them rather than replacing page styles.
+   Each area has its own hue (--hue) used for its icon tile, active state and Settings card. */
+:root{
+  --font-ui:"Plus Jakarta Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+  --h-study:#7c5cff;--h-market:#3b82f6;--h-gym:#f97316;--h-social:#ec4899;--h-finance:#10b981;--h-ai:#a855f7;--h-voice:#06b6d4;--h-todo:#6366f1;
+  --sb-surface:rgba(255,255,255,.86);--sb-border:rgba(30,27,75,.08);--sb-text:#3f4361;--sb-muted:#8a8ea8;--sb-hover:rgba(30,27,75,.045);
+  --shell-radius:16px;--shell-shadow:0 1px 2px rgba(30,27,75,.04),0 8px 28px rgba(30,27,75,.07);
+  --aurora-1:rgba(124,92,255,.13);--aurora-2:rgba(236,72,153,.08);--aurora-3:rgba(6,182,212,.07);
+  --icon-chevron:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+body.dark{
+  --sb-surface:rgba(21,20,42,.82);--sb-border:rgba(255,255,255,.07);--sb-text:#c3c0e0;--sb-muted:#7d7aa3;--sb-hover:rgba(255,255,255,.05);
+  --shell-shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px rgba(0,0,0,.28);
+  --aurora-1:rgba(124,92,255,.20);--aurora-2:rgba(236,72,153,.10);--aurora-3:rgba(6,182,212,.08);
+}
+body{font-family:var(--font-ui);background:radial-gradient(900px 520px at 85% -8%,var(--aurora-1),transparent 70%),radial-gradient(700px 480px at -5% 105%,var(--aurora-2),transparent 70%),radial-gradient(600px 420px at 55% 120%,var(--aurora-3),transparent 70%),var(--bg);background-attachment:fixed}
+button,input,select,textarea{font-family:inherit}
+
+/* ---------- Sidebar: solid, same size as before ---------- */
+/* Always a deep indigo panel (light and dark mode), so the coloured icon tiles read clearly. */
+.sidebar{--sb-bg:#1b1840;--sb-line:rgba(255,255,255,.08);--sb-text:#d9d6f5;--sb-muted:#9592c4;--sb-hover:rgba(255,255,255,.06);
+  background:var(--sb-bg)!important;border-right:1px solid var(--sb-line);box-shadow:none;color:var(--sb-text);padding:16px 10px 12px;display:flex;flex-direction:column;gap:2px;overflow-x:hidden;overflow-y:auto;scrollbar-width:none}
+body.dark .sidebar{--sb-bg:#110f29}
+.sidebar::-webkit-scrollbar{display:none}
+.sidebar-decoration{display:none!important}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:2px 6px 14px;margin:0 0 4px;border-bottom:1px solid var(--sb-line)}
+.sidebar .brand-logo{width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:11px;font-size:19px;background:linear-gradient(135deg,#8b5cf6,#ec4899 65%,#f59e0b);box-shadow:0 4px 14px rgba(139,92,246,.4)}
+.sidebar .brand-name{white-space:nowrap;font-size:15px;font-weight:800;letter-spacing:-.2px;line-height:1.15;color:#fff}
+.sidebar .brand-sub{display:block;font-size:11px;line-height:1.3;color:var(--sb-muted);margin-top:2px}
+.sidebar a.brand{color:inherit;text-decoration:none;cursor:pointer;border-radius:10px}
+.sidebar a.brand .brand-logo{transition:transform .15s}
+.sidebar a.brand:hover .brand-logo{transform:scale(1.06)}
+.sidebar a.brand:hover .brand-sub{color:var(--sb-text)}
+.sidebar a.brand:focus-visible{outline:2px solid #a78bfa;outline-offset:1px}
+.sidebar .nav{display:flex;flex-direction:column;gap:1px;flex:1;min-height:0}
+
+/* Rows */
+.sidebar .nav button{display:flex;align-items:center;gap:10px;width:100%;min-width:0;min-height:38px;padding:0 6px;border:0;border-radius:10px;background:transparent;color:var(--sb-text);font-size:13.5px;font-weight:550;text-align:left;box-shadow:none;cursor:pointer;transition:background .15s,color .15s}
+.sidebar .nav button>span:not(.nav-chevron):not(.nav-avatar){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar .nav button:hover{background:var(--sb-hover);color:#fff}
+.sidebar .nav button:focus-visible{outline:2px solid var(--hue,#a78bfa);outline-offset:1px}
+/* Icon tiles in each area's colour */
+.sidebar .nav button>.ui-icon{box-sizing:border-box;width:28px;height:28px;flex:0 0 28px;padding:6px;border-radius:8px;color:color-mix(in srgb,var(--hue,#a78bfa) 70%,#fff);background:color-mix(in srgb,var(--hue,#a78bfa) 22%,transparent);transition:background .15s,color .15s}
+.sidebar .nav button.active{background:rgba(255,255,255,.09);color:#fff;font-weight:700;box-shadow:inset 3px 0 0 var(--hue,#a78bfa)}
+.sidebar .nav button.active>.ui-icon{color:#fff;background:var(--hue,#a78bfa)}
+.sidebar .subjects-nav{--hue:var(--h-study)}
+.sidebar #marketplaceNav{--hue:var(--h-market)}
+.sidebar .gym-nav{--hue:var(--h-gym)}
+.sidebar .social-nav{--hue:var(--h-social)}
+.sidebar .finance-nav{--hue:var(--h-finance)}
+.sidebar .nav>[data-view=tutor]{--hue:var(--h-ai)}
+.sidebar .nav>[data-view=voice]{--hue:var(--h-voice)}
+
+/* Group labels: modules insert their sections above AI Tutor, so labels are drawn, not inserted. */
+.sidebar .subjects-nav::before,.sidebar #marketplaceNav::before,.sidebar .nav>[data-view=tutor]::before{display:block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--sb-muted);padding:8px 8px 5px}
+.sidebar .subjects-nav::before{content:'Study'}
+.sidebar #marketplaceNav{margin-top:6px}
+.sidebar #marketplaceNav::before{content:'Life & tools'}
+.sidebar .nav>[data-view=tutor]{position:relative;margin-top:30px}
+.sidebar .nav>[data-view=tutor]::before{content:'AI assistants';position:absolute;left:0;top:-27px;pointer-events:none}
+
+/* Expandable groups and their dropdown arrows */
+.sidebar .subjects-nav,.sidebar .subjects-nav.expanded,.sidebar .gym-nav,.sidebar .finance-nav,.sidebar .social-nav,.sidebar .marketplace-nav{background:none;border:0;border-radius:0;padding:0;margin-left:0;margin-right:0;box-shadow:none}
+.sidebar .subjects-nav-head,.sidebar .module-nav-head{display:flex;align-items:center;gap:2px}
+.sidebar .subjects-nav-head>button:first-child,.sidebar .module-nav-head>button:first-child{flex:1;min-width:0}
+.sidebar #subjectsToggle,.sidebar #gymToggle,.sidebar #financeToggle{flex:0 0 30px;width:30px;min-width:30px;min-height:30px;padding:0;justify-content:center;color:var(--sb-muted);border-radius:8px}
+.nav-chevron{display:inline-block;width:12px;height:12px;flex:0 0 12px;margin-left:auto;font-size:0;color:var(--sb-muted);background:currentColor;-webkit-mask:var(--icon-chevron) center/contain no-repeat;mask:var(--icon-chevron) center/contain no-repeat;transition:transform .2s}
+#subjectsToggle .nav-chevron,#gymToggle .nav-chevron,#financeToggle .nav-chevron{margin:0}
+[aria-expanded=false]>.nav-chevron{transform:rotate(-90deg)}
+.sidebar #marketplaceToggle .nav-chevron,.sidebar #socialToggle .nav-chevron{margin-right:9px}
+.sidebar #subjectsToggle:hover .nav-chevron,.sidebar #gymToggle:hover .nav-chevron,.sidebar #financeToggle:hover .nav-chevron,.sidebar #marketplaceToggle:hover .nav-chevron,.sidebar #socialToggle:hover .nav-chevron{color:#fff}
+/* Every dropdown arrow sits in one column on the right edge: centred in the arrow button of split rows
+   (Subjects, Gym, Finance) and inset by half a column in single-button rows (Marketplace, Socialise). */
+.sidebar{--arrow-col:44px}  /* 44px keeps each arrow button easy to click and tap */
+.sidebar .nav #subjectsToggle,.sidebar .nav #gymToggle,.sidebar .nav #financeToggle{flex:0 0 var(--arrow-col);width:var(--arrow-col);min-width:var(--arrow-col);padding:0;justify-content:center}
+.sidebar .nav #marketplaceToggle,.sidebar .nav #socialToggle{padding-right:0}
+.sidebar .nav #marketplaceToggle .nav-chevron,.sidebar .nav #socialToggle .nav-chevron{margin-right:calc(var(--arrow-col)/2 - 6px)}
+/* Open groups point down (⌄) and closed ones right (›), Subjects included. */
+.sidebar .subjects-nav.expanded #subjectsToggle .nav-chevron{transform:none}
+/* Long sub-page names must not widen a group past the sidebar. */
+.sidebar .social-nav,.sidebar .marketplace-nav{display:block;width:100%;min-width:0}
+/* Sub-pages: a guide line in the area's colour and a dot for the active page */
+.sidebar #subjectsSubnav>div,.sidebar #gymSubnav,.sidebar #financeSubnav,.sidebar #socialSubnav,.sidebar #marketplaceSubnav{display:flex;flex-direction:column;gap:1px;margin:1px 0 6px 19px;padding-left:10px;border-left:2px solid color-mix(in srgb,var(--hue) 35%,transparent)}
+.sidebar #subjectsSubnav>div button,.sidebar #gymSubnav button,.sidebar #financeSubnav button,.sidebar #socialSubnav button,.sidebar #marketplaceSubnav button{position:relative;min-height:31px;padding:0 8px;font-size:13px;font-weight:500;color:var(--sb-muted);border-radius:8px;box-shadow:none}
+.sidebar #subjectsSubnav>div button:hover,.sidebar #gymSubnav button:hover,.sidebar #financeSubnav button:hover,.sidebar #socialSubnav button:hover,.sidebar #marketplaceSubnav button:hover{color:#fff}
+.sidebar #subjectsSubnav>div button.active,.sidebar #gymSubnav button.active,.sidebar #financeSubnav button.active,.sidebar #socialSubnav button.active,.sidebar #marketplaceSubnav button.active{color:#fff;background:color-mix(in srgb,var(--hue) 22%,transparent);font-weight:700;box-shadow:none}
+.sidebar #subjectsSubnav>div button.active::before,.sidebar #gymSubnav button.active::before,.sidebar #financeSubnav button.active::before,.sidebar #socialSubnav button.active::before,.sidebar #marketplaceSubnav button.active::before{content:'';position:absolute;left:-15px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:var(--hue);box-shadow:0 0 0 3px var(--sb-bg)}
+.sidebar #subjectsSubnav button>.ui-icon{width:15px;height:15px;flex:0 0 15px;padding:0;border-radius:0;background:none;box-shadow:none;color:currentColor;opacity:.85}
+.sidebar [hidden]{display:none!important}
+.sidebar .subjects-subnav{display:grid;grid-template-rows:1fr;transition:grid-template-rows .2s}
+.sidebar .subjects-nav:not(.expanded) .subjects-subnav{grid-template-rows:0fr}
+.sidebar .subjects-subnav>div{overflow:hidden;min-height:0}
+.sidebar .subjects-nav:not(.expanded) #subjectsSubnav>div{margin-top:0;margin-bottom:0;border-color:transparent}
+
+/* Profile card = Settings, pinned to the bottom */
+.sidebar .nav>.nav-profile{margin-top:auto;min-height:50px;padding:6px;border:1px solid var(--sb-line);border-radius:12px;background:rgba(255,255,255,.04);gap:9px;box-shadow:none}
+.sidebar .nav>.nav-profile:hover{background:rgba(255,255,255,.08)}
+.sidebar .nav>.nav-profile.active{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.18);box-shadow:none}
+.sidebar .nav-avatar{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;overflow:hidden;border-radius:10px;font-size:18px;font-weight:800;color:#fff;background:linear-gradient(135deg,#8b5cf6,#ec4899)}
+.sidebar .nav-avatar img{width:100%;height:100%;object-fit:cover}
+.sidebar .nav .nav-profile .nav-profile-text{display:grid!important;min-width:0;flex:1;line-height:1.25}
+.sidebar .nav .nav-profile .nav-profile-text>*{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar .nav-profile-text b{font-size:13px;font-weight:700;color:#fff}
+.sidebar .nav-profile-text small{font-size:11px;color:var(--sb-muted);font-weight:500}
+.sidebar .nav>.nav-profile>.ui-icon{width:16px;height:16px;flex:0 0 16px;padding:0;background:none;color:var(--sb-muted)}
+.sidebar .nav>.nav-profile.active>.ui-icon{background:none;color:#fff}
+.sidebar .mobile-nav-close{color:var(--sb-muted)}
+
+/* ---------- Top bar ---------- */
+@media (min-width:761px){
+  .portal-topbar{height:68px;gap:12px;margin-bottom:18px;border-bottom:0;background:transparent}
+}
+.portal-topbar .icon-button{width:42px;height:42px;min-width:42px;display:grid;place-items:center;border:1px solid var(--sb-border);border-radius:13px;background:var(--panel);color:var(--muted);box-shadow:var(--shell-shadow);transition:color .15s,transform .15s}
+.portal-topbar .icon-button:hover{color:var(--primary);transform:translateY(-1px)}
+.portal-topbar .global-search{flex:1;max-width:580px;height:44px;padding:0 10px 0 16px;border:1px solid var(--sb-border);border-radius:14px;background:var(--panel);box-shadow:var(--shell-shadow);transition:border-color .15s,box-shadow .15s}
+.portal-topbar .global-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 16%,transparent)}
+.portal-topbar .global-search input{height:100%;border:0!important;background:transparent!important;box-shadow:none!important;outline:none;font-size:14px;padding:0}
+.portal-topbar .global-search svg{color:var(--muted);flex:none}
+.portal-topbar .global-search::after{content:'/';display:grid;place-items:center;flex:none;width:24px;height:24px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:12px;font-weight:700;background:var(--panel2)}
+.portal-topbar .global-search:focus-within::after{opacity:0}
+.portal-topbar .profile-button{display:flex;align-items:center;gap:9px;height:44px;padding:0 14px 0 5px;border:1px solid var(--sb-border);border-radius:14px;background:var(--panel);color:var(--text);font-weight:700;box-shadow:var(--shell-shadow)}
+.portal-topbar .profile-avatar{width:34px;height:34px;border-radius:10px;overflow:hidden}
+.portal-topbar .profile-button>span:last-child{color:var(--muted);font-size:11px}
+@media (max-width:760px){.portal-topbar .global-search::after{display:none}}
+
+/* ---------- Settings ---------- */
+#portalSettings{display:grid;grid-template-columns:230px minmax(0,1fr);column-gap:28px;row-gap:0;align-items:start;max-width:1140px}
+#portalSettings>*{grid-column:2;min-width:0}
+#portalSettings>:not(#accountSettings),#accountSettings>:not(.account-tabs){margin-bottom:18px!important}
+#accountSettings{display:contents}
+#portalSettings .account-card,#portalSettings .account-data-card,#portalSettings .gym-card{margin:0;border:1px solid var(--sb-border);border-radius:var(--shell-radius);background:var(--panel);box-shadow:var(--shell-shadow)}
+
+/* Profile header with a cover banner */
+#portalSettings .account-hero{grid-column:1/-1;position:relative;overflow:hidden;margin:0;padding:134px 28px 24px;align-items:flex-end;border:1px solid var(--sb-border);border-radius:22px;background:var(--panel);box-shadow:var(--shell-shadow)}
+#portalSettings .account-hero::before{content:'';position:absolute;inset:0 0 auto 0;height:118px;background:linear-gradient(120deg,#7c5cff 0%,#a855f7 35%,#ec4899 70%,#f59e0b 100%);opacity:.92}
+#portalSettings .account-hero::after{content:'';position:absolute;inset:0 0 auto 0;height:118px;background:radial-gradient(circle at 20% 120%,rgba(255,255,255,.35),transparent 45%),radial-gradient(circle at 85% -20%,rgba(255,255,255,.3),transparent 40%)}
+#portalSettings .account-hero>*{position:relative;z-index:1}
+#portalSettings .account-hero .account-portrait{margin-top:-64px;align-self:flex-start;width:96px;height:96px;border-radius:26px;border:4px solid var(--panel);box-shadow:0 10px 26px rgba(30,27,75,.18);background:var(--panel)}
+#portalSettings .account-hero h2{font-size:28px;letter-spacing:-.6px}
+#portalSettings .account-eyebrow{color:var(--primary)}
+#portalSettings .account-hero>.account-button{align-self:end;border-radius:12px}
+
+/* Section menu with icons */
+#portalSettings .account-tabs{grid-column:1;grid-row:2/span 40;align-self:start;position:sticky;top:16px;display:flex;flex-direction:column;gap:2px;padding:8px;margin:0;border:1px solid var(--sb-border);border-radius:var(--shell-radius);background:var(--panel);box-shadow:var(--shell-shadow);overflow:visible}
+#portalSettings .account-tabs button{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;padding:0 10px;border:0;border-radius:11px;background:none;color:var(--muted);font-size:14px;font-weight:600;text-align:left;cursor:pointer}
+#portalSettings .account-tabs button::before{content:'';width:18px;height:18px;flex:none;background:currentColor;-webkit-mask:var(--tab-icon) center/contain no-repeat;mask:var(--tab-icon) center/contain no-repeat;opacity:.85}
+#portalSettings .account-tabs button:hover{background:var(--panel2);color:var(--text)}
+#portalSettings .account-tabs button.active{background:color-mix(in srgb,var(--primary) 11%,var(--panel));color:var(--primary);font-weight:700;box-shadow:none}
+#portalSettings .account-tabs button.active::after{display:none}
+#portalSettings [data-account-tab=profile]{--tab-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0 1 16 0'/%3E%3C/svg%3E")}
+#portalSettings [data-account-tab=appearance]{--tab-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 3a9 9 0 1 0 9 9c0-1.7-1.3-2-2.5-2H16a2 2 0 0 1-2-2V6.5C14 4.3 13.7 3 12 3z'/%3E%3Ccircle cx='7.5' cy='11' r='1'/%3E%3Ccircle cx='10' cy='7' r='1'/%3E%3C/svg%3E")}
+#portalSettings [data-account-tab=security]{--tab-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z'/%3E%3Cpath d='M9 12l2 2 4-4'/%3E%3C/svg%3E")}
+#portalSettings [data-account-tab=admin]{--tab-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'/%3E%3C/svg%3E")}
+#portalSettings [data-account-tab=features]{--tab-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='2'/%3E%3Crect x='14' y='3' width='7' height='7' rx='2'/%3E%3Crect x='3' y='14' width='7' height='7' rx='2'/%3E%3Crect x='14' y='14' width='7' height='7' rx='2'/%3E%3C/svg%3E")}
+#portalSettings [data-account-tab=data]{--tab-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cellipse cx='12' cy='5' rx='8' ry='3'/%3E%3Cpath d='M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'/%3E%3C/svg%3E")}
+
+/* Only the chosen section's panels show. Without a tab (account still loading) everything shows. */
+.settings-section-head{display:none;padding:4px 2px 0}
+.settings-section-head h3{margin:0 0 4px;font-size:22px;letter-spacing:-.4px}
+.settings-section-head p{margin:0;color:var(--muted);line-height:1.5}
+#portalSettings[data-settings-tab=features] .settings-section-head[data-for=features],#portalSettings[data-settings-tab=data] .settings-section-head[data-for=data]{display:block}
+#portalSettings[data-settings-tab] .account-data-card,#portalSettings[data-settings-tab] .gym-card{display:none}
+#portalSettings[data-settings-tab=features] .gym-card,#portalSettings[data-settings-tab=data] .account-data-card{display:block}
+#portalSettings[data-settings-tab=features] .account-card,#portalSettings[data-settings-tab=data] .account-card{display:none}
+#portalSettings .account-data-card{padding:22px}
+#portalSettings .account-data-card h3{margin:0 0 6px;font-size:16px}
+
+/* Danger zone (the old sidebar footer, shown under Data & backup) */
+#view-settings>.side-footer,.side-footer .danger-copy{display:none}
+#view-settings:has(#portalSettings[data-settings-tab=data])>.side-footer{display:flex;flex-direction:column;align-items:flex-start;gap:12px;box-sizing:border-box;width:calc(min(1140px,100%) - 258px);max-width:none;margin:0 0 0 258px;padding:20px 22px;border:1px solid color-mix(in srgb,var(--danger) 30%,var(--sb-border));border-radius:var(--shell-radius);background:color-mix(in srgb,var(--danger) 5%,var(--panel))}
+#view-settings>.side-footer .danger-copy{display:grid;gap:4px;margin:0}
+.side-footer .danger-copy b{font-size:16px;color:var(--danger)}
+.side-footer .danger-copy span{font-size:13px;line-height:1.6;color:var(--muted)}
+#view-settings>.side-footer #themeBtn{display:none}
+#view-settings>.side-footer #resetBtn{border:1px solid color-mix(in srgb,var(--danger) 45%,var(--line));color:var(--danger);background:var(--panel);border-radius:11px;padding:10px 14px;font-weight:700}
+
+/* Features: one card per module, its icon tile in the same hue as the sidebar */
+#portalSettings .gym-card{position:relative;padding:20px 22px;--hue:var(--h-todo);--tile:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'/%3E%3C/svg%3E")}
+#portalSettings .gym-settings{--hue:var(--h-gym);--tile:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 12h12M3 8v8M6 5v14M18 5v14M21 8v8'/%3E%3C/svg%3E")}
+#portalSettings .finance-settings{--hue:var(--h-finance);--tile:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-4a2 2 0 0 0 0 4h4v2a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V6M21 13v4'/%3E%3C/svg%3E")}
+#portalSettings .social-settings{--hue:var(--h-social);--tile:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'/%3E%3C/svg%3E")}
+#portalSettings .gym-card:has(.gym-switch input:checked){border-color:color-mix(in srgb,var(--hue) 35%,var(--sb-border))}
+#portalSettings .gym-card>h3{display:none}
+#portalSettings .gym-module-row{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:start;gap:14px;margin:0}
+#portalSettings .gym-module-row::before{content:'';width:44px;height:44px;border-radius:13px;background:color-mix(in srgb,var(--hue) 14%,var(--panel))}
+#portalSettings .gym-module-row>div:first-child::after{content:'';position:absolute;left:12px;top:12px;width:20px;height:20px;background:var(--hue);-webkit-mask:var(--tile) center/contain no-repeat;mask:var(--tile) center/contain no-repeat}
+#portalSettings .gym-card:has(.gym-switch input:checked) .gym-module-row::before{background:var(--hue);box-shadow:0 6px 16px color-mix(in srgb,var(--hue) 35%,transparent)}
+#portalSettings .gym-card:has(.gym-switch input:checked) .gym-module-row>div:first-child::after{background:#fff}
+#portalSettings .gym-module-row>div{min-width:0}
+#portalSettings .gym-module-row h4{margin:2px 0 3px;font-size:15.5px;font-weight:750;display:flex;align-items:center;gap:8px}
+#portalSettings .gym-module-row h4 svg{display:none}
+#portalSettings .gym-module-row p{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+#portalSettings .gym-card>p.gym-caution,#portalSettings .gym-card>p{margin:12px 0 0 58px;color:var(--muted);font-size:12.5px!important;line-height:1.55}
+#portalSettings .gym-card>p:empty{display:none}
+#portalSettings .gym-card form,#portalSettings .gym-card .soc-button,#portalSettings .gym-card [data-retry]{margin-left:58px;margin-top:14px}
+/* Switch: still a real checkbox for keyboards and screen readers */
+#portalSettings .gym-switch{display:inline-flex;align-items:center;gap:10px;margin:8px 0 0;cursor:pointer;font-size:13px;color:var(--muted);white-space:nowrap}
+#portalSettings .gym-switch input{appearance:none;-webkit-appearance:none;position:relative;width:46px;height:28px;flex:none;margin:0;border-radius:999px;background:color-mix(in srgb,var(--muted) 35%,var(--panel2));border:0;cursor:pointer;transition:background .2s}
+#portalSettings .gym-switch input::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+#portalSettings .gym-switch input:checked{background:var(--hue)}
+#portalSettings .gym-switch input:checked::after{transform:translateX(18px)}
+#portalSettings .gym-switch input:focus-visible{outline:2px solid var(--hue);outline-offset:3px}
+#portalSettings .gym-switch input:disabled{opacity:.5;cursor:not-allowed}
+#portalSettings .gym-switch span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#portalSettings .gym-switch::after{content:'Off';min-width:22px;font-size:12px;font-weight:700}
+#portalSettings .gym-switch:has(input:checked)::after{content:'On';color:var(--hue)}
+
+@media (max-width:960px){
+  #portalSettings{grid-template-columns:minmax(0,1fr)}
+  #portalSettings>*{grid-column:1}
+  #portalSettings .account-tabs{grid-column:1;grid-row:auto;position:static;flex-direction:row;flex-wrap:wrap;padding:6px;margin-bottom:18px}
+  #portalSettings .account-tabs button{width:auto;flex:none;white-space:nowrap}
+  #view-settings:has(#portalSettings[data-settings-tab=data])>.side-footer{width:100%;margin-left:0}
+}
+@media (max-width:560px){
+  #portalSettings .account-hero{padding:116px 18px 18px}
+  #portalSettings .account-hero::before,#portalSettings .account-hero::after{height:100px}
+  #portalSettings .account-hero .account-portrait{width:80px;height:80px;margin-top:-56px}
+  #portalSettings .gym-module-row{grid-template-columns:44px minmax(0,1fr)}
+  #portalSettings .gym-switch{grid-column:2;justify-self:start}
+  #portalSettings .gym-card form{margin-left:0}
+  #portalSettings .gym-card{padding:16px}
+}

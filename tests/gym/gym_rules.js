@@ -24,4 +24,18 @@ assert.deepEqual(c.current.covered,['Chest','Legs','Core']);assert.deepEqual(c.c
 c=r.weekCompare(sessions,sets.filter(s=>s.session_id!=='now2').slice(0,4),new Date(2026,8,24));
 assert(!c.beaten);assert.equal(c.setsToBeat,3);
 c=r.weekCompare(sessions,sets,new Date(2026,8,24),-1);assert.equal(c.current.start,'2026-09-14');assert(c.firstWeek);
-console.log('PASS Gym rules: 540 preference combinations, equipment-safe swaps, streak, records, estimated 1RM, plates, muscle matching and weekly progress/coverage');
+// Exercise library: Machine / Own weight types, searchable, and earlier ids kept for logged history.
+const ids=r.exercises.map(e=>e.id);assert.equal(new Set(ids).size,ids.length);assert(r.exercises.length>=120);
+for(const id of ['bench','dbpress','pushup','squat','goblet','airsquat','deadlift','rdl','bridge','pulldown','row','prone','ohp','pike','lateral','scap','curl','pushdown','extension','closepush','lunge','legpress','calf','deadbug','crunch'])assert(r.byId(id),id);
+for(const e of r.exercises){assert(e.type in r.types,e.id);assert(r.groups.includes(e.muscle),e.id);assert(e.secondary.every(m=>r.muscles.includes(m)),e.id);assert(['reps','seconds','minutes'].includes(e.unit),e.id);assert(e.target&&e.instructions,e.id)}
+for(const m of r.groups)for(const type of ['machine','free'])if(m!=='Mobility'||type==='free')assert(r.search('',{muscle:m,type}).length>0,m+' '+type);  // stretches need no machine
+assert.equal(r.byId('legpress').type,'machine');assert.equal(r.byId('squat').type,'free');assert.equal(r.byId('treadmill').unit,'minutes');assert.equal(r.byId('plank').unit,'seconds');
+assert.equal(r.search('').length,r.exercises.length);assert(r.search('smith',{type:'machine'}).length>=5);assert.deepEqual(r.search('smith',{type:'free'}).map(e=>e.id),['invrow']);assert.equal(r.search('smith')[0].type,'machine');
+assert.equal(r.search('leg press')[0].id,'legpress');assert(r.search('squads').some(e=>e.id==='squat'));assert(r.search('squat',{type:'machine'}).some(e=>e.id==='smithsquat'));
+assert.equal(r.search('abs')[0].muscle,'Core');assert(r.search('',{muscle:'Cardio'}).every(e=>e.muscle==='Cardio'));assert.deepEqual(r.search('no such exercise'),[]);
+for(const v of [0,1,2,3,4])for(const x of r.suggest({equipment:'bodyweight',level:'advanced',goal:'strength',duration:90},v).exercises){const e=r.byId(x.id);assert.equal(x.unit,e.unit);if(e.unit==='seconds')assert.equal(x.reps,30)}
+assert(r.exercises.filter(e=>e.muscle==='Cardio').every(e=>!r.suggest({equipment:'gym',level:'advanced',goal:'fitness',duration:90}).exercises.some(x=>x.id===e.id)));
+const cardio=r.weekSummary([{id:'c',date:'2026-09-22',status:'completed',data:{exercises:[{id:'treadmill',unit:'minutes'}]}}],[{session_id:'c',exercise_id:'treadmill',weight:0,reps:25}],'2026-09-21');
+assert.deepEqual([cardio.minutes,cardio.reps,cardio.volume,cardio.secondary.Legs],[25,0,0,1]);assert.equal(r.records([{session_id:'c',exercise_id:'treadmill',weight:0,reps:25}],[{id:'c',status:'completed',data:{exercises:[{id:'treadmill',unit:'minutes'}]}}]).length,0);
+assert.equal(r.muscleOf('own-3','Incline treadmill walk').muscle,'Cardio');
+console.log('PASS Gym rules: 540 preference combinations, equipment-safe swaps, streak, records, estimated 1RM, plates, muscle matching, weekly progress/coverage and the searchable Machine / Own weight library');

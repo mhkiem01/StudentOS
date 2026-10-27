@@ -5,6 +5,7 @@ money is integer minor units. Acquisition pins a version; imports are own copies
 Keep this service boundary when replacing the small-host SQLite implementation.
 """
 import base64
+from html.parser import HTMLParser
 import json
 import re
 import sqlite3
@@ -109,7 +110,7 @@ def reviews(c,kind,target):
 def rating(rows): return round(sum(r['rating'] for r in rows)/len(rows),2) if rows else 0
 def serialize_listing(c,r,u):
     rs=reviews(c,'note',r['id']);v=c.execute('SELECT format,preview FROM market_versions WHERE listing=? AND version=?',(r['id'],r['version'])).fetchone()
-    return {**r,'seller_profile':public(c,r['seller']),'reviews':rs,'rating':rating(rs),'format':v['format'],'preview':v['preview'],'preview_pages':c.execute('SELECT COUNT(*) FROM market_previews WHERE listing=? AND version=?',(r['id'],r['version'])).fetchone()[0],'owned':bool(owned(c,u,r['id']))}
+    return {**r,'seller_profile':public(c,r['seller']),'reviews':rs,'rating':rating(rs),'format':v['format'],'preview':v['preview'],'preview_pages':[x[0]+1 for x in c.execute('SELECT page FROM market_previews WHERE listing=? AND version=? ORDER BY page',(r['id'],r['version']))],'owned':bool(owned(c,u,r['id']))}
 def state(path,u):
     migrate(path)
     with accounts.db(path) as c:
@@ -141,25 +142,101 @@ def state(path,u):
         result['reports']=[dict(r) for r in c.execute('SELECT * FROM market_reports ORDER BY created_at DESC')] if result['is_admin'] else []
         return result
 
+PAGE_CHARS=1500     # roughly one printed page of note text
+MAX_PREVIEW=10
+
+class Blocks(HTMLParser):
+    """Split sanitized note HTML into its top-level blocks (paragraphs, headings, lists, code)."""
+    def __init__(self):super().__init__(convert_charrefs=False);self.blocks=[];self.cur=[];self.depth=0
+    def flush(self):
+        text=''.join(self.cur).strip()
+        if text:self.blocks.append(text)
+        self.cur=[]
+    def handle_starttag(self,tag,attrs):
+        self.cur.append(self.get_starttag_text())
+        if tag in note_document.VOID:
+            if not self.depth:self.flush()
+        else:self.depth+=1
+    def handle_startendtag(self,tag,attrs):
+        self.cur.append(self.get_starttag_text())
+        if not self.depth:self.flush()
+    def handle_endtag(self,tag):
+        self.cur.append('</'+tag+'>');self.depth=max(0,self.depth-1)
+        if not self.depth:self.flush()
+    def handle_data(self,data):self.cur.append(data)
+    def handle_entityref(self,name):self.cur.append('&'+name+';')
+    def handle_charref(self,name):self.cur.append('&#'+name+';')
+
+def paginate(fmt,raw):
+    """Split a Markdown or rich note into pages of about one printed page, at block boundaries.
+    A heading late on a page starts the next page, like a printed document."""
+    if fmt=='markdown':
+        blocks,current,fence=[],[],False
+        for line in raw.replace('\r\n','\n').split('\n'):
+            if line.strip().startswith('```'):fence=not fence
+            if not line.strip() and not fence:
+                if current:blocks.append('\n'.join(current));current=[]
+            else:current.append(line)
+        if current:blocks.append('\n'.join(current))
+        size,heading,joiner=len,(lambda b:b.lstrip().startswith('#')),'\n\n'
+    else:
+        parser=Blocks();parser.feed(raw);parser.flush();blocks=parser.blocks
+        size,heading,joiner=(lambda b:len(note_document.plain(b))),(lambda b:re.match(r'<h[1-3]\b',b,re.I)),''
+    pages,page,used=[],[],0
+    for block in blocks:
+        n=max(1,size(block))
+        if page and (used+n>PAGE_CHARS or (heading(block) and used>PAGE_CHARS*0.6)):pages.append(joiner.join(page));page,used=[],0
+        page.append(block);used+=n
+    if page:pages.append(joiner.join(page))
+    return pages or ['']
+
+def page_numbers(spec):
+    """'1-3, 5' (or [1, 2, 3, 5]) → sorted unique 1-based page numbers."""
+    if spec in (None,'',[]):return []
+    parts=[str(x) for x in spec] if isinstance(spec,list) else [p.strip() for p in spec.split(',') if p.strip()] if isinstance(spec,str) else None
+    if parts is None:raise ValueError('Write preview pages like 1-3, 5.')
+    pages=set()
+    for part in parts:
+        m=re.fullmatch(r'(\d{1,5})(?:\s*-\s*(\d{1,5}))?',part)
+        if not m or int(m.group(1))<1 or int(m.group(2) or m.group(1))<int(m.group(1)):raise ValueError('Write preview pages like 1-3, 5.')
+        a,b=int(m.group(1)),int(m.group(2) or m.group(1))
+        if b-a>=MAX_PREVIEW:raise ValueError(f'Preview at most {MAX_PREVIEW} pages.')
+        pages.update(range(a,b+1))
+    if len(pages)>MAX_PREVIEW:raise ValueError(f'Preview at most {MAX_PREVIEW} pages.')
+    return sorted(pages)
+
+def build_previews(fmt,content,spec):
+    """The seller's free preview pages: returns (total pages, [(0-based page, PNG or note text)]).
+    Without a choice, page 1 is previewed. One page always stays for buyers, so a single-page resource shows its excerpt only."""
+    pages=page_numbers(spec) if spec is not None else [1]
+    if fmt=='pdf':
+        rendered=marketplace_pdf.preview(content,pages);total=rendered['pages']
+    else:
+        chunks=paginate(fmt,content.decode('utf-8'));total=len(chunks)
+    if total<2:pages=[]  # sellers cannot know in advance how a short note paginates
+    if any(p>total for p in pages):raise ValueError(f'This resource has {total} page{"" if total==1 else "s"}. Choose preview pages from 1 to {total}.')
+    if pages and len(pages)>=total:raise ValueError('Keep at least one page for buyers: preview fewer pages than the resource has.')
+    if fmt=='pdf':return total,[(p-1,base64.b64decode(rendered['images'][str(p)])) for p in pages]
+    return total,[(p-1,chunks[p-1].encode('utf-8')) for p in pages]
+
 def snapshot(d):
     fmt=select(d.get('format'),('markdown','html','pdf'))
-    images=[];pages=None
     if fmt=='pdf':
         try: content=base64.b64decode(d.get('base64',''),validate=True)
         except Exception: raise ValueError('Invalid PDF upload.')
         if not content.startswith(b'%PDF-') or not 8<=len(content)<=8*1024*1024: raise ValueError('Upload a PDF up to 8 MB.')
-        rendered=marketplace_pdf.preview(content,d.get('preview_count',3));pages=rendered['pages'];images=[base64.b64decode(i) for i in rendered['images']]
     else:
         raw=text(d.get('content',''),100000)
         if not raw: raise ValueError('Note content is empty.')
         if fmt=='html':
-            # Private image paths must never point at the buyer's account images.
-            raw=re.sub(r'<img\b[^>]*>','',note_document.sanitize(raw),flags=re.I)
+            # Private image paths must never point at the buyer's account images; handwriting pages are private files too.
+            raw=re.sub(r'<img\b[^>]*>|<figure\b[^>]*></figure>','',note_document.sanitize(raw),flags=re.I)
         content=raw.encode('utf-8')
     preview=text(d.get('preview',''),6000)
     if not preview: raise ValueError('Write a public preview excerpt. Only this excerpt is shared before acquisition.')
     name='resource.'+('md' if fmt=='markdown' else fmt)
-    return fmt,content,preview,name,images,pages
+    pages,previews=build_previews(fmt,content,d.get('preview_pages'))
+    return fmt,content,preview,name,previews,pages
 
 def availability(d):
     slots=d.get('availability',[])
@@ -203,14 +280,20 @@ def write(path,u,payload):
             if not meta['subject'] or not 1<=meta['pages']<=10000: raise ValueError('Enter a subject and page count (1–10000).')
             version=old['version'] if old else 0
             if d.get('format'):
-                fmt,content,preview,filename,images,pages=snapshot(d);version+=1
-                if pages:meta['pages']=pages
+                fmt,content,preview,filename,previews,meta['pages']=snapshot(d);version+=1
             elif not old: raise ValueError('Choose a resource to publish.')
+            else:meta['pages']=old['metadata'].get('pages',meta['pages'])
             key=key or ident()
             c.execute('INSERT INTO market_listings VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,version=excluded.version,metadata=excluded.metadata,updated_at=excluded.updated_at',(key,u,status,version,enc(meta),old['created_at'] if old else stamp,stamp))
             if d.get('format'):
                 c.execute('INSERT INTO market_versions VALUES(?,?,?,?,?,?,?)',(key,version,filename,fmt,content,preview,stamp))
-                c.executemany('INSERT INTO market_previews VALUES(?,?,?,?)',[(key,version,i,raw) for i,raw in enumerate(images)])
+                c.executemany('INSERT INTO market_previews VALUES(?,?,?,?)',[(key,version,page,raw) for page,raw in previews])
+            elif 'preview_pages' in d:
+                # The seller changed which pages are free to read, without uploading a new version.
+                v=c.execute('SELECT format,content FROM market_versions WHERE listing=? AND version=?',(key,version)).fetchone()
+                _,previews=build_previews(v['format'],v['content'],d.get('preview_pages') or '')
+                c.execute('DELETE FROM market_previews WHERE listing=? AND version=?',(key,version))
+                c.executemany('INSERT INTO market_previews VALUES(?,?,?,?)',[(key,version,page,raw) for page,raw in previews])
             return {'ok':True,'id':key}
         elif action=='listing_status':
             r=listing(c,key,u,True)
@@ -356,11 +439,13 @@ def resource(path,u,key,count=False):
         if count and o:c.execute('UPDATE market_ownership SET downloads=downloads+1 WHERE user_id=? AND listing=?',(u,key))
         return {**dict(v),'title':r['metadata']['title'],'seller_name':public(c,r['seller'])['name'],'acquired_at':o['acquired_at'] if o else now()}
 
-def preview_image(path,u,key,page):
+def preview_page(path,u,key,page):
+    """One free preview page (1-based): a PNG for PDFs, or note text for Markdown/rich notes. Other pages stay private."""
     migrate(path)
+    if not str(page).isdigit():raise Forbidden('That page is not a free preview.')
     with accounts.db(path) as c:
         r=listing(c,key)
         if r['status']!='published' and r['seller']!=u and not owned(c,u,key):raise Forbidden('This preview is unavailable.')
-        image=c.execute('SELECT content FROM market_previews WHERE listing=? AND version=? AND page=?',(key,r['version'],int(page))).fetchone()
-        if not image:raise Forbidden('That page is not a public preview.')
-        return image[0]
+        row=c.execute('SELECT p.content,v.format FROM market_previews p JOIN market_versions v ON v.listing=p.listing AND v.version=p.version WHERE p.listing=? AND p.version=? AND p.page=?',(key,r['version'],int(page)-1)).fetchone()
+        if not row:raise Forbidden('That page is not a free preview.')
+        return bytes(row[0]),row[1]

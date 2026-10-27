@@ -3,14 +3,14 @@ module.exports=async function(js,call){
  await call('Emulation.setDeviceMetricsOverride',{width:1400,height:900,deviceScaleFactor:1,mobile:false});
  assert.equal(await js("document.querySelectorAll('.nav [data-view=dashboard]').length"),0);
  assert(await js("getComputedStyle(document.querySelector('#menuToggle')).display!=='none'"));
- await js("document.querySelector('.nav [data-view=settings]').click();document.querySelector('.portal-home').click()");
+ await js("document.querySelector('.nav [data-view=settings]').click();document.querySelector('.sidebar .brand').click()");
  assert(await js("document.querySelector('#view-dashboard').classList.contains('active')"));
  const mainWidth=await js("document.querySelector('.main').getBoundingClientRect().width");
  await js("document.querySelector('#menuToggle').click()");
  assert(await js("document.body.classList.contains('sidebar-hidden')&&document.querySelector('.sidebar').inert&&document.querySelector('#menuToggle').getAttribute('aria-expanded')==='false'"));
  assert(await js("document.querySelector('.main').getBoundingClientRect().width")>mainWidth);
  await js("window.navigationBeforeReload=true");await call('Page.reload');
- for(let i=0;i<80;i++){if(await js("!window.navigationBeforeReload&&!!document.querySelector('.portal-home')&&!!document.body&&document.body.classList.contains('sidebar-hidden')"))break;await new Promise(r=>setTimeout(r,100))}
+ for(let i=0;i<80;i++){if(await js("!window.navigationBeforeReload&&!!document.querySelector('.portal-topbar')&&!!document.body&&document.body.classList.contains('sidebar-hidden')"))break;await new Promise(r=>setTimeout(r,100))}
  assert(await js("document.body.classList.contains('sidebar-hidden')"));
  await js("document.querySelector('#menuToggle').click()");
  assert(await js("!document.body.classList.contains('sidebar-hidden')&&!document.querySelector('.sidebar').inert&&document.querySelector('#menuToggle').getAttribute('aria-expanded')==='true'"));
@@ -35,12 +35,14 @@ module.exports=async function(js,call){
   assert(await js("!document.body.classList.contains('nav-open') && document.activeElement.id==='menuToggle' && document.querySelector('.sidebar').inert"));
   await js("document.querySelector('#menuToggle').click();document.querySelector('.nav [data-view=notes]').click()");assert(!await js("document.body.classList.contains('nav-open')"));
   assert(await js("document.documentElement.scrollWidth<=innerWidth"));
-  await js("document.querySelector('.portal-home').click()");
-  assert(await js("document.querySelector('#view-dashboard').classList.contains('active')"));
-  assert(await js("(()=>{const logo=document.querySelector('.portal-home').getBoundingClientRect(),bell=document.querySelector('.notification-button').getBoundingClientRect();return logo.right<=bell.left&&logo.width>80})()"));
+  assert(!await js("!!document.querySelector('.portal-home')"),'The top bar has no separate dashboard logo');
+  await js("document.querySelector('#menuToggle').click()");await new Promise(r=>setTimeout(r,300));
+  assert(await js("(()=>{const r=document.querySelector('.sidebar .brand').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.width>80})()"),'Sidebar brand is visible in the open drawer at '+width);
+  await js("document.querySelector('.sidebar .brand').click()");
+  assert(await js("document.querySelector('#view-dashboard').classList.contains('active')&&!document.body.classList.contains('nav-open')"));
  }
  await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
- await js("document.querySelector('.portal-home').click()");
+ await js("document.querySelector('#menuToggle').click();document.querySelector('.sidebar .brand').click()");
  const shot=await call('Page.captureScreenshot',{format:'png'});require('node:fs').writeFileSync(require('node:path').join(require('node:os').tmpdir(),'portal-mobile-refresh.png'),Buffer.from(shot.data,'base64'));
  await js("document.querySelector('#menuToggle').click();document.querySelector('.nav-backdrop').click()");assert(!await js("document.body.classList.contains('nav-open')"));
  await js("document.querySelector('#menuToggle').click()");await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});assert(!await js("document.body.classList.contains('nav-open')"));

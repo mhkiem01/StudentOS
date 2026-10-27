@@ -1,0 +1,72 @@
+/* CTF practice: board, challenge window and forms. Uses the portal theme variables. */
+.ctf{display:grid;gap:16px}
+.ctf-top{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+.ctf-score{display:flex;align-items:center;gap:12px;flex:1;min-width:220px}.ctf-score b{display:block;font-size:18px}.ctf-score small{color:var(--muted)}.ctf-score progress{flex:1;max-width:260px;height:10px;accent-color:#c2410c}.ctf-flag{font-size:28px}
+.ctf-buttons{display:flex;gap:8px;flex-wrap:wrap}
+.ctf-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.ctf-filters label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.ctf-filters select{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);font:inherit;font-size:13px}
+.ctf-chips{display:flex;gap:6px;flex-wrap:wrap}.ctf-chip{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:999px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;min-height:32px}.ctf-chip.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.ctf-topic h3{font-size:16px;margin:4px 0 10px}.ctf-topic h3 small{color:var(--muted);font-weight:500;font-size:12px;margin-left:6px}
+.ctf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.ctf-card{display:grid;gap:6px;justify-items:start;align-content:start;text-align:left;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font:inherit;cursor:pointer;min-height:118px;transition:border-color .15s,transform .15s}
+.ctf-card:hover{border-color:var(--primary);transform:translateY(-1px)}.ctf-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.ctf-card b{font-size:14px;line-height:1.35}
+.ctf-meta,.ctf-state{font-size:12px;color:var(--muted)}.ctf-card.solved{border-color:#1aa35c;background:color-mix(in srgb,#1aa35c 10%,var(--panel))}.ctf-card.solved .ctf-state{color:#15803d;font-weight:700}body.dark .ctf-card.solved .ctf-state{color:#6ee7a7}
+.ctf-cat{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.02em;color:#fff;background:#64748b}
+.cat-pwn{background:#dc2626}.cat-rev{background:#7c3aed}.cat-web{background:#2563eb}.cat-crypto{background:#b45309}.cat-forensics{background:#0f766e}.cat-misc{background:#64748b}.cat-osint{background:#15803d}
+.ctf-empty{padding:24px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);text-align:center;line-height:1.6}.ctf-empty h3{color:var(--text);margin-top:0}
+.mode-grid:has(>.ctf-mode){grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+/* Challenge window */
+.ctf-dialog{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--panel);color:var(--text);box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.ctf-dialog::backdrop{background:rgba(10,12,30,.55)}
+.ctf-dialog-inner{display:grid;gap:14px;padding:20px 22px}
+.ctf-dialog header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.ctf-dialog h2{margin:6px 0 2px;font-size:21px}.ctf-dialog header small{color:var(--muted)}
+.ctf-dialog h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}.ctf-dialog section{min-width:0}
+.ctf-diff{margin-left:8px;font-size:12px;color:var(--muted)}
+.ctf-x{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:10px;width:40px;height:40px;font-size:20px;cursor:pointer;flex:0 0 40px}
+.ctf-status{margin:0;padding:10px 14px;border-radius:12px;background:var(--panel2);font-size:13px}.ctf-status.solved{background:color-mix(in srgb,#1aa35c 15%,var(--panel));color:#15803d;font-weight:700}body.dark .ctf-status.solved{color:#6ee7a7}
+.ctf-status.celebrate{animation:ctf-pop .5s}@keyframes ctf-pop{0%{transform:scale(.97)}60%{transform:scale(1.02)}100%{transform:none}}@media(prefers-reduced-motion:reduce){.ctf-status.celebrate{animation:none}.ctf-card{transition:none}}
+.ctf-desc{line-height:1.6;font-size:14px;overflow-wrap:anywhere}.ctf-desc p{margin:0 0 10px}
+.ctf-desc pre{margin:0 0 10px;padding:12px 14px;border-radius:10px;background:#0f1222;color:#e6e8ff;overflow:auto;font-size:12.5px;line-height:1.5}.ctf-desc code,.ctf-connect code,.ctf-history code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.ctf-desc :not(pre)>code{background:var(--panel2);padding:1px 5px;border-radius:5px;font-size:.92em}
+.ctf-connect{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--line);border-radius:12px}.ctf-connect span{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase}.ctf-connect code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px}
+.ctf-files{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px}.ctf-files li{display:flex;align-items:center;gap:10px;min-width:0}.ctf-files a{overflow-wrap:anywhere}.ctf-files small{color:var(--muted)}
+.ctf-remove{border:0;background:none;color:var(--muted);cursor:pointer;min-width:32px;min-height:32px;border-radius:8px}.ctf-remove:hover{color:#dc2626;background:var(--panel2)}.ctf-attach{cursor:pointer}
+.ctf-hint{margin:0 0 8px;padding:10px 12px;border-left:3px solid #f59e0b;background:color-mix(in srgb,#f59e0b 10%,var(--panel));border-radius:0 10px 10px 0;font-size:14px}.ctf-hint b{margin-right:6px}
+.ctf-submit form,.ctf-form .ctf-row{display:flex;gap:10px;flex-wrap:wrap}.ctf-submit input{flex:1;min-width:200px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.ctf-dialog input,.ctf-dialog select,.ctf-dialog textarea{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);font:inherit;font-size:14px;min-width:0}.ctf-dialog textarea{width:100%;box-sizing:border-box;resize:vertical}
+.ctf-feedback{margin:6px 0 0;color:#dc2626;font-size:13px}.ctf-feedback:empty{display:none}body.dark .ctf-feedback{color:#ff8a80}
+.ctf-solution{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
+.ctf-history ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:4px}.ctf-history li{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.ctf-history small{color:var(--muted)}.ctf-history .right code{color:#15803d}.ctf-history .wrong code{color:#dc2626}body.dark .ctf-history .right code{color:#6ee7a7}body.dark .ctf-history .wrong code{color:#ff8a80}
+.ctf-dialog footer{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
+.ctf-form label{display:grid;gap:6px;font-size:13px;font-weight:600}.ctf-form .ctf-row>label{flex:1 1 140px}.ctf-form .ctf-check{display:flex;align-items:center;gap:8px;font-weight:500}.ctf-form small{line-height:1.5}
+.ctf-format summary{cursor:pointer;font-weight:600}.ctf-format pre{white-space:pre-wrap;font-size:12px;background:var(--panel2);padding:10px;border-radius:10px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.ctf-format p{font-size:13px;color:var(--muted)}
+.ctf-errors,.ctf-ok{padding:12px;border-radius:12px}.ctf-errors{border:1px solid #f0a0a0;background:color-mix(in srgb,#dc2626 8%,var(--panel))}.ctf-ok{border:1px solid color-mix(in srgb,#1aa35c 40%,var(--line));background:color-mix(in srgb,#1aa35c 8%,var(--panel))}
+.ctf-errors ul,.ctf-ok ul{margin:8px 0 0;padding-left:18px;display:grid;gap:6px;font-size:13px}.ctf-errors small,.ctf-ok small{display:block;color:var(--muted)}
+.ctf-subject-toggle{display:flex;align-items:flex-start;gap:10px;font-weight:600;cursor:pointer}.ctf-subject-toggle input{width:18px;height:18px;margin-top:2px;flex:0 0 18px}.ctf-subject-toggle small{display:block;font-weight:400;color:var(--muted);margin-top:2px}
+@media(max-width:700px){.ctf-dialog-inner{padding:16px}.ctf-score progress{max-width:none}.ctf-dialog input,.ctf-dialog select,.ctf-dialog textarea,.ctf-filters select{font-size:16px}.ctf-dialog footer .btn{flex:1}}
+/* Practise with AI: three numbered steps, like the quiz import guide */
+.ctf-eyebrow{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--primary)}
+.ctf-step{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:14px}
+.ctf-dialog .ctf-step h3{display:flex;align-items:center;gap:10px;margin:0;font-size:14px;letter-spacing:0;text-transform:none;color:var(--text)}
+.ctf-step h3 span{display:inline-grid;place-items:center;width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px}
+.ctf-prompt{margin:0;max-height:220px;overflow:auto;padding:12px 14px;border-radius:10px;background:#0f1222;color:#e6e8ff;font:12.5px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.ctf-prompt:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.ctf-check-note{margin:0;font-size:12.5px}
+.ctf-how{display:grid;gap:8px;max-width:520px;margin:0 auto 16px;padding-left:22px;text-align:left;color:var(--text)}
+.ctf-empty>.btn{margin-bottom:6px}
+.ctf-dialog footer .ctf-next{margin-right:auto}
+
+/* Solution code editor + AI mentor review (ctf_review) */
+.ctf-review textarea{width:100%;min-height:210px;resize:vertical;font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);box-sizing:border-box;white-space:pre;overflow:auto;tab-size:4}
+.ctf-review-bar{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
+.ctf-review-out{margin-top:12px}
+.ctf-review-out:empty{display:none}
+.ctf-verdict{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;margin:0 0 6px}
+.ctf-verdict small{font-weight:400;font-size:11px;color:var(--muted)}
+.ctf-verdict.ok{color:#1aa35c}.ctf-verdict.warn{color:#d97706}.ctf-verdict.bad{color:#dc5a4b}
+.ctf-review-out p{margin:6px 0;line-height:1.6}
+.ctf-issues{list-style:none;padding:0;margin:10px 0;display:grid;gap:8px}
+.ctf-issues li{padding:9px 12px;border:1px solid var(--line);border-left:3px solid #d97706;border-radius:8px;background:var(--panel2);font-size:13px}
+.ctf-issues li b{display:block}
+.ctf-issues li span{color:var(--muted);display:block;margin-top:3px}
+.ctf-next-step{font-weight:600}
+.ctf-review-note{display:block;margin-top:8px}

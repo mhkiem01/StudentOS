@@ -9,6 +9,21 @@ python tests/support/run_tests.py --notes
 python tests/support/run_tests.py --browser
 ```
 
+## Demo content (Marketplace and Socialise)
+
+To try the shared features without creating everything by hand:
+
+```powershell
+python tools/demo_data.py add      # 8 demo students: notes, tutors, clubs, study groups, projects, posts, events
+python tools/demo_data.py remove   # deletes all demo rows, including your activity on them
+```
+
+Demo people have `demo.` usernames and cannot sign in. Every real account is linked to the demo content
+(friends and requests, a club and two group projects, bookings, a conversation and notifications).
+`add` replaces earlier demo content with fresh dates. Both commands back up `data/accounts.db` to
+`data/backups/before-demo-data-*.db` first. Notes you added to your own subjects from a demo listing stay
+yours. `tests/marketplace/test_demo_data.py` checks that the content works and that removal is clean.
+
 Or double-click `tests/runners/RUN_MARKETPLACE_TESTS.bat` for the full backend and dashboard
 browser suite. Requires Python, Node.js and Edge/Chrome. No Ollama or payment
 credentials are needed. Test users/files exist only in temporary databases.

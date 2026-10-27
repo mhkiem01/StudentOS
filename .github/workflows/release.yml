@@ -1,0 +1,50 @@
+# Continuous delivery: pushing a version tag (for example `git tag v1.2.0` then `git push origin v1.2.0`) runs every CI
+# check, then publishes a GitHub Release with a ready-to-run zip of the app. The app runs on your own computer, so a
+# release is the download, not a server deployment.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Publish the download
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # to create the release
+    steps:
+      - uses: actions/checkout@v5
+
+      # Only committed files go in, so data/, backups/ and .env (all git-ignored) are never included; checked again here.
+      - name: Build the zip
+        run: |
+          name="StudentOS-${GITHUB_REF_NAME}"
+          git archive --format=zip --prefix="$name/" -o "$name.zip" HEAD
+          if unzip -Z1 "$name.zip" | grep -E '/(data|backups)/|\.env$|\.(db|sqlite3?)$'; then
+            echo "::error::Private files found in the download"; exit 1
+          fi
+          sha256sum "$name.zip" > "$name.zip.sha256"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" StudentOS-*.zip StudentOS-*.zip.sha256 \
+            --title "StudentOS $GITHUB_REF_NAME" --generate-notes --verify-tag \
+            --notes-file - <<'NOTES'
+          ## Install
+          1. Download **StudentOS-*.zip** below and extract it.
+          2. Windows: double-click `START_WINDOWS.bat`. macOS/Linux: run `START_MAC_LINUX.command`.
+          3. Open the address it prints. Python 3 is the only requirement.
+
+          Moving from an older copy? Copy your old `data/` folder (and `.env` if you use cloud AI) into the new folder first.
+          NOTES

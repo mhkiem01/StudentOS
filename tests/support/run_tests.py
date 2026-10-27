@@ -15,11 +15,12 @@ def ready(url):
         except OSError:time.sleep(.1)
     raise RuntimeError('Test service did not start: '+url)
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--browser',action='store_true');parser.add_argument('--accounts',action='store_true');parser.add_argument('--gym',action='store_true');parser.add_argument('--dashboard',action='store_true');parser.add_argument('--notes',action='store_true',help='Run the subject Notes browser suite.');parser.add_argument('--live',action='store_true');parser.add_argument('--vision',action='store_true',help='Also test a real timetable image with Ollama (requires Pillow).');args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--browser',action='store_true');parser.add_argument('--accounts',action='store_true');parser.add_argument('--gym',action='store_true');parser.add_argument('--dashboard',action='store_true');parser.add_argument('--notes',action='store_true',help='Run the subject Notes browser suite.');parser.add_argument('--live',action='store_true');parser.add_argument('--vision',action='store_true',help='Also test a real timetable image with Ollama (requires Pillow).');parser.add_argument('--no-unit',action='store_true',help='Skip the Python and Node checks (CI runs them in a job of their own).');args=parser.parse_args()
     node=shutil.which('node')
     if not node:raise RuntimeError('Node.js is required for the JavaScript tests. Install Node.js, then retry.')
-    run([sys.executable,'-m','unittest','discover','-s','tests','-t','.','-p','test_*.py'])
-    run([node,'tests/planner/calendar_dates.js']);run([node,'tests/planner/week_popup.js']);run([node,'tests/assistant/chatbot/client.test.js']);run([node,'tests/study/notes_markdown.js']);run([node,'tests/gym/gym_rules.js'])
+    if not args.no_unit:
+      run([sys.executable,'-m','unittest','discover','-s','tests','-t','.','-p','test_*.py'])
+      run([node,'tests/planner/calendar_dates.js']);run([node,'tests/planner/week_popup.js']);run([node,'tests/assistant/chatbot/client.test.js']);run([node,'tests/study/notes_markdown.js']);run([node,'tests/study/deep_practice_markdown.js']);run([node,'tests/study/handwriting.js']);run([node,'tests/gym/gym_rules.js']);run([node,'tests/gym/gym_planner.js'])
     if args.browser or args.notes or args.dashboard or args.gym or args.accounts:
         browser=os.getenv('CHAT_TEST_BROWSER') or next((str(p) for p in [Path(os.getenv('PROGRAMFILES(X86)','C:/Program Files (x86)'))/'Microsoft/Edge/Application/msedge.exe',Path(os.getenv('PROGRAMFILES','C:/Program Files'))/'Google/Chrome/Application/chrome.exe'] if p.exists()),None)
         if not browser:raise RuntimeError('Set CHAT_TEST_BROWSER to the path of Edge or Chrome to run browser tests.')

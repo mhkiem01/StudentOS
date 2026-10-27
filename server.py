@@ -27,8 +27,11 @@ import progress_service
 import currency_provider
 import accounts
 import social_store
+import note_shares
 import marketplace_store
 import quick_review_store
+import ctf_store
+import deep_practice
 import voice_tutor
 import os
 from contextvars import ContextVar
@@ -42,6 +45,7 @@ REQUEST_DB = ContextVar('portal_database', default=None)
 WORKSPACE_LOCK = threading.Lock()
 READY_WORKSPACES = set()
 def database_path(): return REQUEST_DB.get() or DB_PATH
+def backups_path(): return ROOT/'backups' if database_path()==DB_PATH else database_path().parent/'backups'
 INDEX_PATH = ROOT / "index.html"
 # Listen on the PC's network interfaces so the laptop and phones on the same
 # private Wi-Fi can all use the same LAN address.
@@ -54,7 +58,9 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS topics (
     name TEXT PRIMARY KEY,
     color TEXT NOT NULL DEFAULT '#7445f5',
-    sort_order INTEGER NOT NULL DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    parent_topic TEXT,
+    quiz_name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS questions (
@@ -95,6 +101,7 @@ CREATE TABLE IF NOT EXISTS topic_sessions (
     answers_json TEXT NOT NULL DEFAULT '{}',
     flags_json TEXT NOT NULL DEFAULT '{}',
     timer_json TEXT NOT NULL DEFAULT '{}',
+    order_json TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY(topic_name) REFERENCES topics(name) ON DELETE CASCADE
 );
 
@@ -171,6 +178,15 @@ def init_db():
             con.execute(
                 "ALTER TABLE topic_sessions ADD COLUMN timer_json TEXT NOT NULL DEFAULT '{}'"
             )
+        if "order_json" not in session_columns:
+            con.execute(
+                "ALTER TABLE topic_sessions ADD COLUMN order_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        # A row with parent_topic is an extra quiz of that topic, not a topic of its own.
+        topic_columns = {row["name"] for row in con.execute("PRAGMA table_info(topics)")}
+        for column in ("parent_topic", "quiz_name"):
+            if column not in topic_columns:
+                con.execute(f"ALTER TABLE topics ADD COLUMN {column} TEXT")
         subject_columns = {
             row["name"] for row in con.execute("PRAGMA table_info(subjects)")
         }
@@ -179,7 +195,7 @@ def init_db():
                 "ALTER TABLE subjects ADD COLUMN category TEXT NOT NULL DEFAULT 'general'"
             )
 
-    backup_dir=ROOT/'backups' if database_path()==DB_PATH else database_path().parent/'backups'
+    backup_dir=backups_path()
     calendar_store.migrate(database_path(), backup_dir)
     notes_store.migrate(database_path(), backup_dir)
     gym_store.migrate(database_path(), backup_dir)
@@ -190,6 +206,8 @@ def init_db():
     progress_service.migrate(database_path(), backup_dir)
     task_cleanup.migrate(database_path(), backup_dir)
     quick_review_store.migrate(database_path(), backup_dir)
+    ctf_store.migrate(database_path())
+    deep_practice.migrate(database_path())
 
 def export_state():
     state = {"topics": {}, "progress": {}, "subjects": {}, "topicMeta": {}, "sessions": {}, "latestResults": {}, "flashcards": {}, "flashcardProgress": {}, "_savedAt": 0}
@@ -205,13 +223,17 @@ def export_state():
             except (TypeError, ValueError):
                 pass
         topics = con.execute(
-            "SELECT name, color FROM topics ORDER BY sort_order, rowid"
+            "SELECT name, color, parent_topic, quiz_name FROM topics ORDER BY sort_order, rowid"
         ).fetchall()
         for t in topics:
             name = t["name"]
             state["topics"][name] = []
             state["flashcards"][name] = []
             state["topicMeta"][name] = {"color": t["color"]}
+            if t["parent_topic"]:
+                state["topicMeta"][name]["parent"] = t["parent_topic"]
+            if t["quiz_name"]:
+                state["topicMeta"][name]["quizName"] = t["quiz_name"]
             rows = con.execute(
                 "SELECT data_json FROM questions WHERE topic_name=? ORDER BY position, id",
                 (name,),
@@ -237,7 +259,7 @@ def export_state():
                 "correct": int(p["correct"]),
             }
 
-        for session in con.execute("SELECT topic_name, current_index, answers_json, flags_json, timer_json FROM topic_sessions"):
+        for session in con.execute("SELECT topic_name, current_index, answers_json, flags_json, timer_json, order_json FROM topic_sessions"):
             try:
                 answers = json.loads(session["answers_json"])
             except Exception:
@@ -256,6 +278,13 @@ def export_state():
                 "flags": flags if isinstance(flags, dict) else {},
                 "timer": timer if isinstance(timer, dict) else {},
             }
+            # A reshuffled attempt's question order (topic indexes); absent for questions in their usual order.
+            try:
+                order = json.loads(session["order_json"])
+            except Exception:
+                order = []
+            if isinstance(order, list) and order:
+                state["sessions"][session["topic_name"]]["order"] = order
 
         for result in con.execute("SELECT topic_name, result_json FROM latest_results"):
             try:
@@ -313,6 +342,14 @@ def import_state(state):
                 target=config.get('target',3)
                 if isinstance(target,bool) or not isinstance(target,int) or not 1<=target<=100:raise ValueError('Mastery target must be 1–100.')
                 clean[topic]={'mode':config['mode'],'target':target}
+                # Remembered timer choice: none, count up, or count down from a limit in minutes.
+                if config.get('timer') is not None:
+                    if config['timer'] not in ('none','up','down'):raise ValueError('Invalid quiz timer.')
+                    clean[topic]['timer']=config['timer']
+                minutes=config.get('minutes')
+                if minutes is not None:
+                    if isinstance(minutes,bool) or not isinstance(minutes,int) or not 1<=minutes<=600:raise ValueError('Quiz time limit must be 1–600 minutes.')
+                    clean[topic]['minutes']=minutes
             con.execute("INSERT OR REPLACE INTO app_meta(key,value) VALUES('quiz_settings',?)",(json.dumps(clean),))
         current = con.execute(
             "SELECT value FROM app_meta WHERE key='saved_at'"
@@ -337,11 +374,22 @@ def import_state(state):
             if row['name'] not in topics:
                 con.execute('DELETE FROM topics WHERE name=?', (row['name'],))
 
+        def meta(name):
+            value = topic_meta.get(name)
+            return value if isinstance(value, dict) else {}
+        # One level only: an extra quiz belongs to a real topic, never to another quiz.
+        parents = {}
+        for name in topics:
+            parent = meta(name).get("parent")
+            if isinstance(parent, str) and parent != name and parent in topics and not meta(parent).get("parent"):
+                parents[name] = parent
         for t_index, (name, questions) in enumerate(topics.items()):
-            color = (topic_meta.get(name) or {}).get("color") or "#7445f5"
+            color = meta(name).get("color") or "#7445f5"
+            quiz_name = meta(name).get("quizName")
+            quiz_name = (quiz_name.strip()[:120] if isinstance(quiz_name, str) else "") or None
             con.execute(
-                "INSERT INTO topics(name, color, sort_order) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET color=excluded.color, sort_order=excluded.sort_order",
-                (str(name), str(color), t_index),
+                "INSERT INTO topics(name, color, sort_order, parent_topic, quiz_name) VALUES(?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET color=excluded.color, sort_order=excluded.sort_order, parent_topic=excluded.parent_topic, quiz_name=excluded.quiz_name",
+                (str(name), str(color), t_index, parents.get(name), quiz_name),
             )
             if not isinstance(questions, list):
                 questions = []
@@ -374,9 +422,11 @@ def import_state(state):
                 timer = session.get("timer")
                 if not isinstance(timer, dict):
                     timer = {}
+                order = session.get("order")
+                order = [i for i in order if isinstance(i, int) and not isinstance(i, bool) and i >= 0] if isinstance(order, list) else []
                 con.execute(
-                    "INSERT INTO topic_sessions(topic_name, current_index, answers_json, flags_json, timer_json) VALUES(?,?,?,?,?)",
-                    (str(name), max(0, int(session.get("currentIndex") or 0)), json.dumps(answers), json.dumps(flags), json.dumps(timer)),
+                    "INSERT INTO topic_sessions(topic_name, current_index, answers_json, flags_json, timer_json, order_json) VALUES(?,?,?,?,?,?)",
+                    (str(name), max(0, int(session.get("currentIndex") or 0)), json.dumps(answers), json.dumps(flags), json.dumps(timer), json.dumps(order)),
                 )
             if name in latest_results and isinstance(latest_results[name], dict):
                 con.execute(
@@ -404,7 +454,7 @@ def import_state(state):
                 (sid, sname, color, category, s_index),
             )
             for pos, topic_name in enumerate(subject.get("topics") or []):
-                if topic_name in topics:
+                if topic_name in topics and topic_name not in parents:
                     con.execute(
                         "INSERT OR REPLACE INTO subject_topics(subject_id, topic_name, position) VALUES(?,?,?)",
                         (sid, str(topic_name), pos),
@@ -495,6 +545,24 @@ def delete_portal(payload):
         con.execute("DELETE FROM " + table + " WHERE id=?", (item_id,))
     return {"ok": True}
 
+def workspace_path(auth_path, user_id):
+    """Each account's private workspace database. The original admin keeps the original database."""
+    return DB_PATH if user_id == 'admin' else auth_path.parent / 'users' / user_id / 'workspace.db'
+
+def ready_workspace(auth_path, user_id):
+    """Open another account's workspace for a shared note, making sure its tables are up to date."""
+    path = workspace_path(auth_path, user_id)
+    if not path.exists():
+        raise social_store.Forbidden('That notebook is not available.')
+    with WORKSPACE_LOCK:
+        if str(path) not in READY_WORKSPACES:
+            token = REQUEST_DB.set(path)
+            try:
+                init_db(); READY_WORKSPACES.add(str(path))
+            finally:
+                REQUEST_DB.reset(token)
+    return path
+
 def choose_port(start=8765, end=8795):
     for port in range(start, end + 1):
         with socket.socket() as sock:
@@ -529,6 +597,11 @@ def lan_addresses():
     except OSError:
         pass
     return addresses
+
+class PortalServer(ThreadingHTTPServer):
+    # A browser talking HTTP/2 to a proxy such as Tailscale Serve asks for every script at once.
+    # Python's default backlog of 5 refuses the overflow, which the proxy reports as 502 Bad Gateway.
+    request_queue_size = 128
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "QuizPrepLocal/1.0"
@@ -602,14 +675,37 @@ class Handler(BaseHTTPRequestHandler):
                     from urllib.parse import parse_qs,quote
                     if post and path=='/api/social':return self.send_json(social_store.write(auth_path,user['id'],self.read_json()))
                     if not post and path=='/api/social':return self.send_json(social_store.state(auth_path,user['id']))
-                    if not post and path=='/api/social/messages':return self.send_json(social_store.messages(auth_path,user['id'],parse_qs(urlparse(self.path).query).get('space',[''])[0]))
+                    query=parse_qs(urlparse(self.path).query);arg=lambda k:query.get(k,[None])[0]
+                    if not post and path=='/api/social/messages':return self.send_json(social_store.messages(auth_path,user['id'],arg('space') or '',arg('room')))
+                    if post and path=='/api/social/call':return self.send_json(social_store.call(auth_path,user['id'],self.read_json()))
+                    if not post and path=='/api/social/live':
+                        cursor=arg('cursor')
+                        if cursor is not None and not cursor.isdigit():raise ValueError('Invalid live cursor.')
+                        return self.send_json(social_store.live(auth_path,user['id'],None if cursor is None else int(cursor),arg('peer'),arg('epoch')))
                     if not post and path.startswith('/api/social/files/'):
                         raw,name=social_store.download(auth_path,user['id'],path.rsplit('/',1)[-1]);self.send_response(200);self.send_header('Content-Type','application/octet-stream');self.send_header('Content-Disposition',"attachment; filename*=UTF-8''"+quote(name));self.send_header('Cache-Control','private, no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
                     return self.send_json({'error':'Unknown Socialise route.'},404)
                 except social_store.Forbidden as exc:return self.send_json({'error':str(exc)},403)
+            if path.startswith('/api/note-shares'):
+                # Live note sharing: the note stays in its owner's workspace; friends read or edit it through a share.
+                try:
+                    ws=lambda uid:ready_workspace(auth_path,uid);parts=path.split('/')
+                    if post and path=='/api/note-shares':return self.send_json(note_shares.write(auth_path,ws,user['id'],self.read_json()))
+                    if not post and path=='/api/note-shares':return self.send_json(note_shares.state(auth_path,ws,user['id']))
+                    if not post and len(parts)==4:return self.send_json(note_shares.read(auth_path,ws,user['id'],parts[3]))
+                    if not post and len(parts)==6 and parts[4]=='ink':
+                        raw=note_shares.ink(auth_path,ws,user['id'],parts[3],parts[5]).encode('ascii')
+                        self.send_response(200);self.send_header('Content-Type','text/plain; charset=us-ascii');self.send_header('X-Content-Type-Options','nosniff')
+                        self.send_header('Cache-Control','private, no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+                    if not post and len(parts)==6 and parts[4]=='images':
+                        raw,name=note_shares.image(auth_path,ws,user['id'],parts[3],parts[5])
+                        self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(name)[0] or 'application/octet-stream');self.send_header('X-Content-Type-Options','nosniff')
+                        self.send_header('Cache-Control','private, no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+                    return self.send_json({'error':'Unknown note sharing route.'},404)
+                except social_store.Forbidden as exc:return self.send_json({'error':str(exc)},403)
             # The original workspace belongs only to the original admin. New
             # accounts use server-derived paths, never paths supplied by clients.
-            workspace=DB_PATH if user['id']=='admin' else auth_path.parent/'users'/user['id']/'workspace.db'
+            workspace=workspace_path(auth_path,user['id'])
             token=REQUEST_DB.set(workspace)
             try:
                 with WORKSPACE_LOCK:
@@ -618,6 +714,35 @@ class Handler(BaseHTTPRequestHandler):
                 if path.startswith('/api/marketplace'):
                     try: return self.marketplace_route(path,post,auth_path,user)
                     except marketplace_store.Forbidden as exc:return self.send_json({'error':str(exc)},403)
+                    except (ValueError,KeyError,TypeError,sqlite3.IntegrityError) as exc:return self.send_json({'error':str(exc)},400)
+                if path=='/api/ctf/review' and post:
+                    import llm_router
+                    payload=self.read_json()
+                    try:
+                        with connect() as con:ctx=ctf_store.review_context(con,payload.get('id'),payload.get('code',''))
+                        result,meta=llm_router.run('ctf_review',*ctf_store.review_prompt(ctx))
+                        review=ctf_store.normalize_review(result,meta)
+                        with connect() as con:challenge=ctf_store.save_review(con,payload.get('id'),review)
+                        return self.send_json({'ok':True,'review':review,'challenge':challenge})
+                    except llm_router.AllModelsFailed as exc:return self.send_json({'ok':False,'error':'No AI reviewer is available right now ('+str(exc)+'). You can still solve the challenge and submit the real flag.'},503)
+                    except (ValueError,KeyError,TypeError,sqlite3.IntegrityError) as exc:return self.send_json({'ok':False,'error':str(exc)},400)
+                if path=='/api/ctf' or path.startswith('/api/ctf/files/'):
+                    try:
+                        with connect() as con:
+                            if path.startswith('/api/ctf/files/') and not post:
+                                from urllib.parse import quote
+                                raw,name=ctf_store.download(con,path.rsplit('/',1)[-1])
+                                # Challenge files (binaries, captures) are only ever downloaded, never shown inline.
+                                self.send_response(200);self.send_header('Content-Type','application/octet-stream');self.send_header('Content-Disposition',"attachment; filename*=UTF-8''"+quote(name))
+                                self.send_header('Cache-Control','private, no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+                            result=ctf_store.write(con,self.read_json()) if post else ctf_store.state(con)
+                        return self.send_json(result)
+                    except (ValueError,KeyError,TypeError,sqlite3.IntegrityError) as exc:return self.send_json({'error':str(exc)},400)
+                # Deep Practice quizzes, attempts and progress live in this account's own workspace database.
+                if path=='/api/deep-practice':
+                    try:
+                        with connect() as con:result=deep_practice.write(con,self.read_json()) if post else deep_practice.state(con)
+                        return self.send_json(result)
                     except (ValueError,KeyError,TypeError,sqlite3.IntegrityError) as exc:return self.send_json({'error':str(exc)},400)
                 if path=='/api/quick-review':
                     try:
@@ -651,7 +776,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({'subjects':[dict(r) for r in con.execute('SELECT id,name FROM subjects ORDER BY sort_order')],'topics':[dict(r) for r in con.execute('SELECT subject_id,topic_name FROM subject_topics')],'notes':[dict(r) for r in con.execute('SELECT id,title,subject_id FROM notes ORDER BY updated_at DESC')]})
         if path=='/api/marketplace/messages' and not post:return self.send_json(marketplace_store.messages(auth_path,u,query.get('conversation',[''])[0]))
         if path.startswith('/api/marketplace/preview/') and not post:
-            parts=path.split('/');raw=marketplace_store.preview_image(auth_path,u,parts[-2],parts[-1])
+            parts=path.split('/');raw,fmt=marketplace_store.preview_page(auth_path,u,parts[-2],parts[-1])
+            if fmt!='pdf':return self.send_json({'format':fmt,'page':int(parts[-1]),'content':raw.decode('utf-8')})
             self.send_response(200);self.send_header('Content-Type','image/png');self.send_header('Cache-Control','private, no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
         if path=='/api/marketplace/slots' and not post:
             return self.send_json(marketplace_store.slots(auth_path,u,query.get('tutor',[''])[0],query.get('date',[''])[0],query.get('duration',['60'])[0],query.get('subject',[''])[0],query.get('method',['Online'])[0]))
@@ -789,12 +915,21 @@ class Handler(BaseHTTPRequestHandler):
             query=parse_qs(urlparse(self.path).query)
             try:
                 with connect() as con:
-                    result=progress_service.report(con,query.get('subject',[''])[0],query.get('topic',[None])[0]);result['quick_review']=quick_review_store.metrics(con,query.get('subject',[None])[0] or None,query.get('topic',[None])[0]);
-                    for item in result.get('topics',[]):item['quick_review']=quick_review_store.metrics(con,query.get('subject',[None])[0] or None,item['topic'])
+                    subject,topic=query.get('subject',[''])[0],query.get('topic',[None])[0]
+                    result=progress_service.report(con,subject,topic)
+                    # Ungrouped topics have no subject to filter Quick Review decks by, so count them topic by topic.
+                    scope=None if subject==progress_service.UNGROUPED else subject or None
+                    for item in result.get('topics',[]):item['quick_review']=quick_review_store.metrics(con,scope,item['topic'])
+                    result['quick_review']=quick_review_store.metrics(con,scope,topic) if scope or topic else {k:sum(t['quick_review'][k] for t in result['topics']) for k in ('decks','pages','viewed','memorised','sessions')}
                     return self.send_json(result)
             except ValueError as exc: return self.send_json({'error':str(exc)},status=400)
         if path == "/api/ai/status":
             return self.send_json(ai_provider.status())
+        if path.startswith('/api/notes/ink/'):
+            try:data=note_document.read_ink(database_path().parent/'note_uploads',path.rsplit('/',1)[-1]).encode('ascii')
+            except ValueError:return self.send_error(404)
+            self.send_response(200);self.send_header('Content-Type','text/plain; charset=us-ascii');self.send_header('X-Content-Type-Options','nosniff')
+            self.send_header('Cache-Control','private, no-store');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
         if path.startswith('/api/notes/images/'):
             if not note_document.IMAGE.fullmatch(path):return self.send_error(404)
             image=database_path().parent/'note_uploads'/path.rsplit('/',1)[-1]
@@ -802,19 +937,13 @@ class Handler(BaseHTTPRequestHandler):
             data=image.read_bytes();self.send_response(200)
             self.send_header('Content-Type',mimetypes.guess_type(image.name)[0]);self.send_header('X-Content-Type-Options','nosniff')
             self.send_header('Cache-Control','private, no-store');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
-        if path in ('/frontend/study/quick-review.js','/frontend/study/quick-review.css','/frontend/marketplace/marketplace.js','/frontend/marketplace/marketplace.css','/frontend/social/social.js','/frontend/social/social.css','/frontend/study/note-editor.js','/frontend/study/note-editor.css','/frontend/planner/general-todos.js','/frontend/planner/general-todos.css','/frontend/finance/finance.js','/frontend/finance/finance.css','/frontend/study/study-progress.js','/frontend/study/study-progress.css','/frontend/assistant/voice-tutor.js','/frontend/assistant/voice-tutor.css'):
-            data=(ROOT/path.lstrip('/')).read_bytes();self.send_response(200)
+        if path.startswith('/frontend/') and path.endswith(('.js','.css')):
+            # Any script or stylesheet inside frontend/, so a new UI file never needs a server change.
+            file=(ROOT/path.lstrip('/')).resolve()
+            if not file.is_relative_to((ROOT/'frontend').resolve()) or not file.is_file():return self.send_error(404)
+            data=file.read_bytes();self.send_response(200)
             self.send_header('Content-Type','text/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
             self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
-        if path in ('/frontend/planner/calendar.js', '/frontend/planner/calendar.css', '/frontend/planner/week-popup.js', '/frontend/planner/week-popup.css', '/frontend/planner/reminders.js', '/frontend/dashboard/dashboard.js', '/frontend/dashboard/dashboard.css', '/frontend/assistant/tutor.js', '/frontend/assistant/tutor.css', '/frontend/study/notes.js', '/frontend/study/notes.css', '/frontend/gym/gym.js', '/frontend/gym/gym-journey.js', '/frontend/gym/gym.css', '/frontend/gym/gym-rules.js'):
-            data = (ROOT / path.lstrip('/')).read_bytes()
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
-            self.send_header('Content-Length', str(len(data)))
-            self.send_header('Cache-Control', 'no-store')
-            self.end_headers()
-            self.wfile.write(data)
-            return
         if path == "/api/backup":
             # SQLite online backup produces a consistent snapshot, scoped to
             # the authenticated workspace. It never includes the accounts DB.
@@ -871,7 +1000,11 @@ class Handler(BaseHTTPRequestHandler):
                 reset_db()
                 return self.send_json({"ok": True})
             if path == "/api/portal":
-                return self.send_json(save_portal(self.read_json()))
+                payload = self.read_json(); result = save_portal(payload)
+                if payload.get('table') == 'notes':
+                    # Friends with this note open see the change straight away.
+                    note_shares.changed(self.server.accounts_path, self.user['id'], payload['item']['id'])
+                return self.send_json(result)
             if path == '/api/gym':
                 payload=self.read_json()
                 try:
@@ -891,6 +1024,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(result)
                 except (ValueError, sqlite3.IntegrityError) as exc:
                     return self.send_json({'ok':False,'error':str(exc)},status=400)
+            if path == '/api/finance/reset':
+                try:
+                    payload=self.read_json()
+                    with connect() as con: return self.send_json(finance_store.reset(con,backups_path(),payload.get('confirm') if isinstance(payload,dict) else None))
+                except ValueError as exc: return self.send_json({'ok':False,'error':str(exc)},status=400)
             if path == '/api/finance/rates':
                 try:
                     with connect() as con:
@@ -901,7 +1039,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({'ok':True})
                 except ValueError as exc: return self.send_json({'ok':False,'error':str(exc)},status=400)
             if path == "/api/portal/delete":
-                return self.send_json(delete_portal(self.read_json()))
+                payload = self.read_json(); result = delete_portal(payload)
+                if payload.get('table') == 'notes':
+                    note_shares.changed(self.server.accounts_path, self.user['id'], payload.get('id'), deleted=True)
+                return self.send_json(result)
             if path == '/api/calendar/import':
                 items = self.read_json().get('events')
                 if not isinstance(items, list) or not items or len(items) > 200:
@@ -933,6 +1074,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({'ok':True,'count':len(notes)})
             if path == '/api/notes/upload':
                 return self.send_json({'ok':True,'url':note_document.upload(database_path().parent/'note_uploads',self.read_json())})
+            if path == '/api/notes/ink':
+                return self.send_json({'ok':True,'id':note_document.save_ink(database_path().parent/'note_uploads',self.read_json())})
             if path == '/api/notes/studied':
                 payload=self.read_json()
                 with connect() as con:
@@ -1002,7 +1145,7 @@ def main():
     # Use the same LAN origin on this PC and mobile devices. This avoids keeping
     # separate 127.0.0.1 and 192.168.x.x browser-storage namespaces.
     url = phone_urls[0] if phone_urls else f"http://127.0.0.1:{port}/"
-    httpd = ThreadingHTTPServer((HOST, port), Handler)
+    httpd = PortalServer((HOST, port), Handler)
     httpd.accounts_path=auth_path
     httpd.public_url = url
     cleanup_stop=task_cleanup.start(DB_PATH)

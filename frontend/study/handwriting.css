@@ -1,0 +1,44 @@
+/* Handwriting pages: the writing screen (handwriting.js) and handwriting pages inside notes. */
+.ink-editor{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:var(--panel);color:var(--text);outline:none}
+.ink-editor button,.ink-editor select{font:inherit;font-size:12px;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer}
+.ink-editor button:hover{border-color:var(--primary)}.ink-editor button:focus-visible,.ink-editor select:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.ink-editor button:disabled{opacity:.4;cursor:default}.ink-editor button[aria-pressed=true]{background:color-mix(in srgb,var(--primary) 14%,var(--panel));border-color:var(--primary);color:var(--primary)}
+.ink-top{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line)}.ink-top strong{font-size:15px}.ink-status{flex:1;min-width:0;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ink-top [data-do=undo],.ink-top [data-do=redo]{font-size:16px;padding:5px 12px}.ink-editor .ink-primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700;min-width:84px}
+.ink-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.ink-group{display:flex;align-items:center;gap:4px}.ink-group[hidden],.ink-size[hidden]{display:none}
+.ink-editor .ink-tool{display:inline-flex;align-items:center;gap:6px;padding:6px 10px}.ink-tool svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ink-colours{gap:6px}.ink-editor .ink-swatch{width:26px;height:26px;padding:0;border-radius:50%;background:var(--swatch);border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line)}
+.ink-editor .ink-swatch[aria-pressed=true]{box-shadow:0 0 0 2px var(--primary);border-color:var(--panel)}.ink-custom{position:relative;display:inline-block;background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)!important;cursor:pointer;overflow:hidden}
+.ink-custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+.ink-size{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}.ink-size input{width:120px;accent-color:var(--primary)}.ink-size output{min-width:28px;color:var(--text);font-variant-numeric:tabular-nums}
+.ink-desk{flex:1;min-height:0;display:flex;overflow:auto;padding:16px;background:color-mix(in srgb,var(--primary) 6%,#e9e7f1);overscroll-behavior:contain}.dark .ink-desk{background:var(--bg)}
+.ink-sheet{position:relative;flex:none;margin:auto;border-radius:4px;box-shadow:0 0 0 1px var(--line),0 10px 30px #1a12402a;touch-action:none;cursor:crosshair;user-select:none;-webkit-user-select:none}
+.ink-sheet canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:4px;pointer-events:none}
+.ink-ruler{position:absolute;z-index:2;border-radius:6px;background:repeating-linear-gradient(90deg,#3c4a6b66 0 1px,transparent 1px var(--tick)) top/100% 22% no-repeat,repeating-linear-gradient(90deg,#3c4a6b66 0 1px,transparent 1px var(--tick)) bottom/100% 22% no-repeat,#c9d7f0b8;border:1px solid #6b7da6;box-shadow:0 4px 14px #1a124030;cursor:move;touch-action:none}
+.ink-ruler-angle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:2px 8px;border-radius:999px;background:#ffffffd9;color:#1d2540;font-size:12px;font-weight:700;pointer-events:none}
+.ink-ruler-knob{position:absolute;right:12px;top:50%;width:22px;height:22px;margin-top:-11px;border-radius:50%;background:var(--primary);border:3px solid #fff;box-shadow:0 1px 4px #0004;cursor:grab}
+.ink-selectbar{position:absolute;z-index:3;display:flex;align-items:center;gap:6px;padding:6px;border-radius:12px;background:var(--panel);border:1px solid var(--line);box-shadow:0 6px 20px #1a124030;white-space:nowrap}
+.ink-selectbar[hidden]{display:none}.ink-selectbar span{font-size:11px;color:var(--muted);padding:0 4px}
+.ink-hint{padding:8px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.ink-saving .ink-desk{opacity:.7;pointer-events:none}.ink-saving{cursor:progress}
+@media(max-width:760px){.ink-top{padding:8px}.ink-top strong{display:none}.ink-toolbar{flex-wrap:nowrap;overflow-x:auto;padding:6px 8px}.ink-toolbar>*{flex-shrink:0}.ink-tool span{display:none}.ink-editor .ink-tool{padding:7px}.ink-size input{width:90px}.ink-desk{padding:8px}.ink-hint{display:none}}
+
+/* A handwriting page in a note: exactly one page of the note's text area, opened for writing with a click. */
+.notebook-document figure[data-ink]{position:relative;display:block;box-sizing:border-box;width:100%;max-width:592px;aspect-ratio:592/740;margin:0 auto;padding:0;border-radius:6px;overflow:hidden;background:#fff;box-shadow:0 0 0 1px var(--line);user-select:none;-webkit-user-select:none}
+/* The picture is placed over the figure rather than in the text flow: a picture in the flow would avoid page view's page-break float and land after the last page. */
+.notebook-document figure[data-ink] img{position:absolute;inset:0;display:block;width:100%;height:100%;max-height:none!important;object-fit:contain;pointer-events:none}
+.notebook-document figure[data-ink] .ink-missing{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:#8a5a00;background:#fff6dc;font-size:13px}
+.notebook-paper-scroll .notebook-document figure[data-ink]{cursor:pointer}
+.notebook-paper-scroll .notebook-document figure[data-ink]::after{content:'✎ Write on this page';position:absolute;top:10px;right:10px;padding:6px 11px;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;box-shadow:0 2px 8px #0003;opacity:0;transition:opacity .15s}
+.notebook-paper-scroll .notebook-document figure[data-ink]:hover::after{opacity:1}
+@media(hover:none){.notebook-paper-scroll .notebook-document figure[data-ink]::after{opacity:.92}}
+.notebook-paper-scroll .notebook-document[contenteditable=false] figure[data-ink]{cursor:default}.notebook-paper-scroll .notebook-document[contenteditable=false] figure[data-ink]::after{display:none}
+/* The "where and on what paper" choices when adding a page. */
+.ink-new{display:grid;gap:14px}.ink-new>label>span,.ink-new legend{display:block;margin-bottom:6px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.ink-new fieldset{border:0;margin:0;padding:0}
+.ink-new select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text)}
+.ink-templates{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}.ink-templates label{position:relative;display:grid;gap:4px;justify-items:center;padding:6px;border:1px solid var(--line);border-radius:10px;font-size:12px;cursor:pointer}
+.ink-templates label:has(input:checked){border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,var(--panel))}.ink-templates input{position:absolute;opacity:0}.ink-templates img{width:64px;height:80px;border-radius:3px;box-shadow:0 0 0 1px var(--line)}
+.ink-templates label:focus-within{outline:2px solid var(--primary);outline-offset:2px}
+.ink-papers{display:flex;flex-wrap:wrap;gap:8px}.ink-papers label{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;cursor:pointer}.ink-papers label:has(input:checked){border-color:var(--primary);color:var(--primary)}
+.ink-papers i{display:inline-block;flex:none;width:16px;height:16px;border-radius:50%;box-shadow:0 0 0 1px var(--line);background:var(--swatch)}

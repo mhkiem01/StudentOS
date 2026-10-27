@@ -6,3 +6,68 @@
 @media(max-width:760px){.finance-view.active{gap:13px}.fin-hero h1{font-size:28px}.fin-title-icon{font-size:30px;padding-right:10px}.fin-hero{gap:10px;flex-wrap:wrap}.fin-currency-badge{display:none}.fin-hero p{font-size:12px}.fin-summary{grid-template-columns:1fr}.fin-stat{padding:16px}.fin-stat strong{font-size:26px}.fin-three,.fin-wide{grid-template-columns:1fr}.fin-three>:last-child{grid-column:auto}.fin-card{padding:14px}.fin-card>header{align-items:flex-start;flex-wrap:wrap}.fin-card h3{font-size:15px}.fin-goal{flex-wrap:wrap;padding:12px}.fin-goal-art{width:48px;min-height:78px;font-size:29px}.fin-goal dl{max-width:none;width:100%;grid-template-columns:1fr 1fr;border-left:0;border-top:1px solid var(--line);padding:10px 0 0}.fin-goal dd{text-align:right}.fin-budget{grid-template-columns:1fr auto;border:1px solid var(--line)!important;border-radius:10px;margin-top:9px;padding:12px!important}.fin-budget>div:nth-child(2){grid-column:1/-1;grid-row:2}.fin-button{min-height:44px;font-size:12px}.fin-period{display:grid;grid-template-columns:44px minmax(0,1fr) 44px}.fin-period label{max-width:none}.fin-period>label:last-child{grid-column:2/-1}.fin-filters{grid-template-columns:1fr 1fr}.fin-filters>label:first-child{grid-column:1/-1}.fin-form-grid{grid-template-columns:1fr}.finance-view input,.finance-view select,.fin-dialog input,.fin-dialog select,.finance-settings select,.fin-dialog textarea{font-size:16px}.fin-dialog{padding:16px}.fin-transaction{flex-wrap:wrap}.fin-transaction>div{flex-basis:55%}.sidebar #financeSubnav button{font-size:14px;min-height:44px}.fin-currency-select{grid-template-columns:minmax(0,1fr) 38px minmax(0,1fr)}.fin-currency-select select{font-size:13px}.fin-currency-select .fin-button{min-width:38px}.fin-goal .fin-button{font-size:11px}.fin-bills article>div{min-width:120px}}
 .fin-wallet{padding:28px;border-radius:20px;border:1px solid color-mix(in srgb,var(--primary) 35%,var(--line));background:linear-gradient(120deg,color-mix(in srgb,var(--primary) 15%,var(--panel)),var(--panel));box-shadow:0 12px 35px #0001}.fin-wallet-top{display:flex;justify-content:space-between;align-items:center;gap:20px}.fin-eyebrow{font-size:11px;letter-spacing:.13em;color:var(--muted)}.fin-wallet h2{font-size:17px;margin:12px 0}.fin-wallet-amount{display:block;font-size:clamp(32px,4vw,48px);letter-spacing:-.04em;overflow-wrap:anywhere}.fin-wallet p,.fin-wallet details{font-size:12px;line-height:1.65;color:var(--muted)}.fin-wallet-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;border-top:1px solid var(--line);padding-top:18px;margin:20px 0}.fin-wallet-stats small,.fin-goal-totals small,.fin-running small{display:block;color:var(--muted);font-size:11px;margin-bottom:7px}.fin-wallet-stats b{font-size:21px;overflow-wrap:anywhere}.fin-goal-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:18px;margin-bottom:20px}.fin-goal-totals strong{font-size:21px;overflow-wrap:anywhere}.fin-goal-totals p{grid-column:1/-1;font-size:11px;color:var(--muted);line-height:1.6;margin:0}.fin-plan-lines{display:grid;gap:14px}.fin-plan-lines span{display:flex;justify-content:space-between;gap:16px;font-size:13px}.fin-plan-total{border-top:1px solid var(--line);padding-top:15px;font-weight:700}.fin-plan-caption{font-size:12px;line-height:1.7;color:var(--muted)}.fin-negative{color:#dc3558!important}.dark .fin-negative{color:#ff8ca5!important}.fin-wallet .fin-plan-warning{padding:12px;border-left:3px solid #edaa35;border-radius:7px;background:#edaa3514;color:var(--text)}.fin-running{text-align:right;max-width:180px}.fin-dialog [data-recurring-income][hidden]{display:none}.fin-wallet .fin-actions{max-width:350px}.finance-view details>summary{cursor:pointer;padding:10px 0;font-size:12px}
 @media(max-width:760px){.fin-wallet{padding:20px}.fin-wallet-top{display:block}.fin-wallet .fin-actions{margin-top:18px;max-width:none}.fin-wallet-stats{grid-template-columns:1fr;gap:15px}.fin-wallet-stats>div{display:flex;justify-content:space-between;align-items:center;gap:12px}.fin-wallet-stats small{margin:0}.fin-goal-totals{grid-template-columns:1fr 1fr;padding:14px;gap:18px}.fin-goal-totals strong{font-size:19px}.fin-plan-lines span{flex-wrap:wrap}.fin-running{max-width:none}.fin-transaction strong{overflow-wrap:anywhere;max-width:100%}}
+/* Planner cards: plan ahead, week by week, recent activity, money flow */
+.fin-plan,.fin-weeks{margin:14px 0}
+.fin-plan>header,.fin-weeks>header,.fin-activity>header,.fin-flow>header{margin-bottom:12px}
+.fin-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.fin-chip{border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--text);padding:8px 13px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;min-height:36px}
+.fin-chip:hover{border-color:var(--primary)}.fin-chip.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.fin-chip-date{border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--text);padding:7px 12px;font:inherit;font-size:12px;min-height:36px}
+.fin-plan-answer{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.fin-plan-answer>div{padding:14px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);min-width:0}
+.fin-plan-answer strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;overflow-wrap:anywhere}
+.fin-plan-status{margin:0 0 12px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);line-height:1.5}
+.fin-plan-status.ok{border-color:color-mix(in srgb,var(--success) 45%,var(--line));background:color-mix(in srgb,var(--success) 10%,var(--panel))}
+.fin-plan-status.warn{border-color:#d9a23b88;background:color-mix(in srgb,#d9a23b 12%,var(--panel))}
+.fin-plan-status.bad{border-color:color-mix(in srgb,var(--danger) 50%,var(--line));background:color-mix(in srgb,var(--danger) 10%,var(--panel))}
+.fin-plan .fin-plan-lines{display:grid;gap:6px;margin-bottom:10px}
+.fin-plan .fin-plan-lines span{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--muted)}
+.fin-plan .fin-plan-lines b{color:var(--text)}
+.fin-plan .fin-plan-lines .fin-plan-total{padding-top:6px;border-top:1px solid var(--line);color:var(--text);font-weight:800}
+.fin-plan-items summary{cursor:pointer;font-weight:700;color:var(--primary);margin:6px 0}
+.fin-plan-items ul{list-style:none;margin:8px 0 0;padding:0;display:grid}
+.fin-plan-items li{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.fin-plan-items li small{margin:0}.fin-plan-after{min-width:84px;text-align:right}
+.fin-plan-kind{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 7px;border-radius:6px;background:var(--panel2);color:var(--muted)}
+.fin-plan-kind.income{color:var(--success)}.fin-plan-kind.bill{color:var(--danger)}.fin-plan-kind.goal{color:var(--primary)}
+.fin-plan-settings{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin:12px 0 4px}
+.fin-plan-settings label{display:grid;gap:4px;font-size:11px;color:var(--muted)}
+.fin-plan-settings input[type=number]{width:130px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit}
+.fin-plan-settings .fin-check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);min-height:34px}
+.fin-week-head p{margin:0 0 8px}
+.fin-week-table{display:grid;margin:8px 0 12px;font-size:13px}
+.fin-week-row{display:grid;grid-template-columns:1.3fr repeat(5,1fr) 1.3fr;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.fin-week-row.head{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.fin-week-flag{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800}
+.fin-week-flag.ok{color:var(--success);background:color-mix(in srgb,var(--success) 12%,transparent)}
+.fin-week-flag.warn{color:#b7791f;background:color-mix(in srgb,#d9a23b 15%,transparent)}
+.fin-week-flag.bad{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.fin-activity-day h4{display:flex;justify-content:space-between;margin:12px 0 4px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.fin-activity-day h4 small{display:inline;text-transform:none;letter-spacing:0}
+.fin-activity-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.fin-activity-icon{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:900;background:color-mix(in srgb,var(--danger) 12%,var(--panel2));color:var(--danger)}
+.fin-activity-icon.income{background:color-mix(in srgb,var(--success) 14%,var(--panel2));color:var(--success)}
+.fin-activity-amount{text-align:right}
+.fin-flow-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:8px}
+.fin-flow-totals strong{display:block;font-size:18px;overflow-wrap:anywhere}
+.fin-flow h4{margin:14px 0 6px}
+.fin-flow-row{margin-bottom:10px}
+.fin-flow-label{display:flex;justify-content:space-between;gap:10px;font-size:13px}.fin-flow-label span{color:var(--muted)}
+.fin-flow-bar{height:8px;border-radius:999px;background:var(--panel2);overflow:hidden;margin-top:4px}
+.fin-flow-bar span{display:block;height:100%;border-radius:999px;background:var(--danger)}.fin-flow-bar.in span{background:var(--success)}
+@media (max-width:760px){
+ .fin-plan-answer,.fin-flow-totals{grid-template-columns:1fr}
+ .fin-plan-items li{grid-template-columns:auto 1fr;}.fin-plan-items li strong,.fin-plan-after{grid-column:2;text-align:left}
+ .fin-week-row.head{display:none}
+ .fin-week-row{grid-template-columns:1fr 1fr;padding:12px 0}
+ .fin-week-row span[data-label]:not(:first-child)::before{content:attr(data-label);display:block;font-size:10px;color:var(--muted);text-transform:uppercase}
+ .fin-week-row span:first-child{grid-column:1/-1}
+}
+.fin-plan-settings .fin-check{display:flex;flex-direction:row;align-items:center;gap:8px;white-space:normal;max-width:none}
+.fin-plan-settings .fin-check input{width:auto;min-height:0;margin:0;flex:none}
+
+.fin-reset-row{display:flex;justify-content:flex-end;margin-top:4px}.fin-reset-row .fin-button,.fin-button.fin-danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,var(--line))}.fin-button.fin-danger[type=submit]{color:#fff;background:var(--danger);border-color:transparent}.fin-button.fin-danger:disabled{opacity:.45;cursor:not-allowed}.fin-reset-list{margin:8px 0 12px;padding-left:20px;line-height:1.8}
+.fin-segmented{display:inline-flex;flex-wrap:wrap;gap:2px;padding:3px;margin-bottom:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);max-width:100%}.fin-segmented .fin-button{border:0;background:none;color:var(--muted);min-height:34px;padding:6px 14px;font-weight:600}.fin-segmented .fin-button[aria-pressed=true]{background:var(--panel);color:var(--primary);box-shadow:0 1px 3px #1a12401f}
+.fin-expense-total{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px 16px;padding:14px 16px;margin-bottom:4px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}.fin-expense-total strong{display:block;font-size:26px;line-height:1.2;overflow-wrap:anywhere}.fin-card .fin-expense-total p{margin:0;font-size:12px}
+.fin-expense{display:grid;grid-template-columns:130px minmax(0,1fr) auto 64px;grid-template-areas:"when what amount action";gap:6px 14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}.fin-expense:last-child{border-bottom:0}.fin-expense-when{grid-area:when}.fin-expense-what{grid-area:what;min-width:0;overflow-wrap:anywhere}.fin-expense>strong{grid-area:amount;font-size:14px;white-space:nowrap}.fin-expense>:last-child{grid-area:action;justify-self:end}.fin-expense-when b,.fin-expense-what b{display:block;font-size:13px}.fin-expenses-card>small{margin-top:10px}
+@media(max-width:760px){.fin-segmented{display:flex;width:100%}.fin-segmented .fin-button{flex:1;padding:6px 4px;min-height:44px}.fin-expense{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"when amount" "what action"}.fin-expense-total strong{font-size:22px}}

@@ -16,6 +16,22 @@ module.exports=async(js,call)=>{
  await wait("!!document.querySelector('.soc-task')");assert(await js("document.querySelector('.soc-task').classList.contains('overdue')"));
  await js("document.querySelector('[data-task-status]').value='done';document.querySelector('[data-task-status]').dispatchEvent(new Event('change'))");
  await wait("document.querySelector('.soc-project-overview').textContent.includes('100%')");
+ // Drag and drop with a real mouse (grabbing the title), the task log, and back to the project landing page.
+ await click('new-task');await submit({title:'Write report'});await wait("[...document.querySelectorAll('.soc-lane[data-lane=todo] .soc-task-title')].some(b=>b.textContent==='Write report')");
+ assert(await js("document.querySelector('.soc-lane[data-lane=done] .soc-task-done')?.textContent.startsWith('✓ Done by')"),'Done cards say who finished them');
+ const drag=await js("(()=>{const c=[...document.querySelectorAll('.soc-task-title')].find(b=>b.textContent==='Write report').getBoundingClientRect(),l=document.querySelector('.soc-lane[data-lane=in_progress] .soc-lane-list').getBoundingClientRect();return {x:c.left+10,y:c.top+c.height/2,tx:l.left+l.width/2,ty:l.top+20}})()");
+ await call('Input.dispatchMouseEvent',{type:'mousePressed',x:drag.x,y:drag.y,button:'left',clickCount:1});
+ for(let i=1;i<=10;i++)await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:drag.x+(drag.tx-drag.x)*i/10,y:drag.y+(drag.ty-drag.y)*i/10,button:'left',buttons:1});
+ await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:drag.tx,y:drag.ty,button:'left',clickCount:1});
+ await wait("[...document.querySelectorAll('.soc-lane[data-lane=in_progress] .soc-task-title')].some(b=>b.textContent==='Write report')");
+ await wait("document.querySelector('.social-view.active [data-social-status]').textContent.includes('Moved “Write report” to In Progress')");
+ assert(!await js("document.querySelector('.soc-dialog').open"),'Dragging by the title does not open the task');
+ await click('tab-log');await wait("!!document.querySelector('.soc-log-day')");
+ const log=await js("[...document.querySelectorAll('.soc-log-item p')].map(p=>p.textContent)");
+ for(const line of ['moved Write report from To Do to In Progress','created Write report','completed Build feature','created Build feature in In Progress'])assert(log.some(l=>l.includes(line)),'Task log: '+line+' in '+JSON.stringify(log));
+ await js("document.querySelector('[data-social=log-filter][data-id=done]').click()");assert.deepEqual(await js("[...document.querySelectorAll('.soc-log-item p')].map(p=>/completed Build feature$/.test(p.textContent))"),[true]);
+ await click('projects-home');await wait("!!document.querySelector('.soc-pj-grid')");assert(!await js("!!document.querySelector('.soc-board')"),'The landing page lists projects without opening one');
+ await js("[...document.querySelectorAll('.soc-pj-open')].find(b=>b.textContent==='Browser Collaboration Project').click()");await wait("!!document.querySelector('.soc-board')");
  await click('space-meeting');await submit({title:'Planning call',start:'2027-01-05T14:00',end:'2027-01-05T15:00',location:'Library'});
  await wait("document.querySelector('.soc-project-layout').textContent.includes('Planning call')");
  const capture=async name=>{const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});require('node:fs').writeFileSync(require('node:path').join(require('node:os').tmpdir(),name),Buffer.from(shot.data,'base64'))};
@@ -32,5 +48,5 @@ module.exports=async(js,call)=>{
  await js("showView('social-projects')");await wait("document.querySelector('.soc-project-detail')?.textContent.includes('Browser Collaboration Project')");
  for(const width of [320,390,744]){await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:true});for(const dark of [true,false]){await js(`document.body.classList.toggle('dark',${dark})`);assert(await js('document.documentElement.scrollWidth<=innerWidth'),'Social projects overflow '+width)}}
  await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await js("showView('social-home')");await wait("!!document.querySelector('#socialPostForm')");await capture('portal-social-home-mobile.png');
- console.log('PASS Socialise: opt-in, retained data, project/task/checklist/history, computed progress, meetings, shared chat, feed likes, private club, mobile light/dark.');
+ console.log('PASS Socialise: opt-in, retained data, project landing, drag-and-drop board, task log, checklist, computed progress, meetings, shared chat, feed likes, private club, mobile light/dark.');
 };

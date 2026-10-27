@@ -29,6 +29,43 @@ class FinanceTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.write('profile',{'currency':'JPY'})
         f.migrate(self.path,self.backups);self.assertEqual(len(list(self.backups.glob('before-finance-*'))),1)
         self.assertIsNotNone(self.c.execute('SELECT name FROM sqlite_master WHERE name="keep_me"').fetchone())
+    def test_reset_backs_up_then_deletes_records_and_keeps_preferences(self):
+        self.write('account',{'opening_amount':'500','opening_date':'2026-09-01'});self.transaction('1000','income')
+        goal=self.write('goals',dict(name='Trip',target='500',target_date='2027-04-01'))['id'];self.write('contributions',dict(goal_id=goal,amount='50',date='2026-09-21'))
+        self.write('budgets',dict(category='Groceries',weekly='50',monthly='200'))
+        bill=self.write('bills',dict(name='Rent',amount='600',category='Rent',start_date='2026-09-21'))['id'];self.write('pay',dict(due_date='2026-09-21',paid_date='2026-09-21',record_expense=True),bill)
+        self.write('income-schedule',{'description':'Work','amount':'200','frequency':'weekly','start_date':'2026-09-14','record_first':True})
+        f.store_rates(self.c,{'base':'AUD','rates':{'JPY':{'rate':'97.42','rate_date':'2026-09-20'}},'provider':'Fixture','fetched_at':'2026-09-21T00:00:00Z'});self.c.commit()
+        counts=lambda c:{t:c.execute('SELECT COUNT(*) FROM finance_'+t).fetchone()[0] for t in f.RESET_TABLES}
+        before=counts(self.c);self.assertTrue(all(before.values()),before)
+        for word in (None,'','reset','RESET '):
+            with self.subTest(confirm=word),self.assertRaises(ValueError):
+                with self.c:f.reset(self.c,self.backups,word)
+        self.assertEqual(counts(self.c),before);self.assertFalse(list(self.backups.glob('before-finance-reset-*')))
+        with self.c:result=f.reset(self.c,self.backups,'RESET')
+        self.assertEqual(result['deleted'],before);self.assertEqual(set(counts(self.c).values()),{0})
+        # The backup holds every record; preferences, cached rates and other features are untouched.
+        with closing(sqlite3.connect(self.backups/result['backup'])) as copy:self.assertEqual(counts(copy),before)
+        s=self.state();self.assertTrue(s['profile']['enabled']);self.assertEqual(s['rates']['data']['JPY']['rate'],'97.42');self.assertEqual(s['balance']['recorded'],0)
+        self.assertIsNotNone(self.c.execute('SELECT name FROM sqlite_master WHERE name="keep_me"').fetchone())
+        # With no records left, the base currency can be changed again.
+        self.write('profile',{'currency':'JPY'});self.assertEqual(self.state()['profile']['currency'],'JPY')
+    def test_upcoming_expenses_periods_overdue_and_planned(self):
+        rent=self.write('bills',dict(name='Rent',amount='600',category='Rent',start_date='2026-09-01',frequency='monthly'))['id']
+        self.write('pay',dict(due_date='2026-09-01',paid_date='2026-09-01',record_expense=True),rent)
+        self.write('bills',dict(name='Phone',amount='45',category='Bills',start_date='2026-09-15'))
+        self.write('bills',dict(name='Old fee',amount='5',category='Bills',start_date='2026-09-05'))
+        self.transaction('80',day='2026-09-25');self.transaction('20',day='2026-09-20');self.transaction('900','income',day='2026-09-26')
+        today=date(2026,9,21);x=f.upcoming_expenses(self.state(),today)
+        self.assertEqual(x['periods'],{'week':{'start':'2026-09-21','end':'2026-09-27'},'month':{'start':'2026-09-01','end':'2026-09-30'},'next_month':{'start':'2026-10-01','end':'2026-10-31'}})
+        # Paid rent and past or income entries are not upcoming; unpaid bills stay on their due date, marked overdue.
+        self.assertEqual([(i['name'],i['date'],i['amount'],i['kind'],i['overdue']) for i in x['items']],
+                         [('Old fee','2026-09-05',500,'bill',True),('Phone','2026-09-15',4500,'bill',True),('Test','2026-09-25',8000,'planned',False),('Rent','2026-10-01',60000,'bill',False)])
+        # Occurrences before the opening balance date are excluded, as in the recorded balance.
+        self.write('account',{'opening_amount':'0','opening_date':'2026-09-10'})
+        self.assertEqual([i['name'] for i in f.upcoming_expenses(self.state(),today)['items']],['Phone','Test','Rent'])
+        # Across a year end, next month is January.
+        self.assertEqual(f.upcoming_expenses(self.state(),date(2026,12,30))['periods']['next_month'],{'start':'2027-01-01','end':'2027-01-31'})
     def test_summary_budget_and_week(self):
         self.transaction('1000','income');key=self.transaction('31');self.transaction('20',day='2026-09-20')
         self.write('budgets',dict(category='Groceries',weekly='50',monthly='200'))

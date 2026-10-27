@@ -18,10 +18,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('nod
  await wait("getComputedStyle(document.querySelector('.tutor-shell')).display==='flex'");
  assert(await js("document.querySelector('#tutorInput').getBoundingClientRect().width>750"));
  assert(await js("document.querySelector('#tutorInput').getBoundingClientRect().height>=80"));
- assert.equal(await js("document.querySelectorAll('.chat-starters button').length"),4);
+ assert.equal(await js("document.querySelectorAll('.chat-starters button').length"),6);
  const screenshot=async name=>{const shot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(os.tmpdir(),name),Buffer.from(shot.data,'base64'))};
  await screenshot('portal-chat-desktop.png');
- await js("document.querySelector('[data-prompt=\"1\"]').click()");assert(await js("document.querySelector('#tutorInput').value.includes('tomorrow')"));
+ await js("[...document.querySelectorAll('.chat-starters button')].find(button=>button.textContent.includes('Add a deadline')).click()");assert(await js("document.querySelector('#tutorInput').value.includes('tomorrow')"));
  // Browser-generated test image: no external downloads or real student images.
  const attach=`var png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='),c=>c.charCodeAt(0));var dt=new DataTransfer();dt.items.add(new File([png],'test.png',{type:'image/png'}));document.querySelector('#tutorImage').files=dt.files;document.querySelector('#tutorImage').dispatchEvent(new Event('change'))`;
  await js(attach);await wait("!document.querySelector('#tutorImagePreview').hidden");assert(await js("!!document.querySelector('#tutorImagePreview img')"));

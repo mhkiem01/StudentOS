@@ -20,7 +20,8 @@ from calendar_store import parse_date
 from currency_provider import CURRENCIES
 
 CATEGORIES = ('Food / Eating Out','Groceries','Transport','Bills','Rent','Fun / Shopping','Health','Education','Travel','Subscriptions','Other')
-DEFAULTS = {'enabled':False,'currency':'AUD','week_start':'monday','period':'month'}
+# buffer: the minimum balance the planner warns below (minor units); forecast_everyday: count budgets as expected spending.
+DEFAULTS = {'enabled':False,'currency':'AUD','week_start':'monday','period':'month','buffer':0,'forecast_everyday':True}
 TABLES = ('transactions','goals','contributions','budgets','bills','payments')
 
 
@@ -153,7 +154,45 @@ def state(con, anchor=None):
     rates=con.execute('SELECT * FROM finance_currency_rates ORDER BY fetched_at DESC,rowid DESC LIMIT 1').fetchone()
     result['rates']={**dict(rates),'data':json.loads(rates['data'])} if rates else None
     finance_planner.enrich(con,result,day,__import__(__name__))
+    result['expenses']=upcoming_expenses(result,date.today())
     return result
+
+
+def upcoming_expenses(result, today):
+    """Money still to pay, relative to today (not the browsed period), through the end of next month.
+
+    Unpaid bills keep their real due date; ones due before today are marked overdue so the student still
+    sees them. Future-dated expenses count as planned payments. Budget allowances are estimates, not
+    payments, so they are left out. Entries before the opening balance date are excluded, as in the balance.
+    """
+    week=today-timedelta(days=today.weekday());month=today.replace(day=1)
+    next_month=(month+timedelta(days=32)).replace(day=1);end=(next_month+timedelta(days=32)).replace(day=1)-timedelta(days=1)
+    opening=result['account']['opening_date'];paid={(p['bill_id'],p['due_date']) for p in result['payments']};items=[]
+    for b in result['bills']:
+        for d in occurrences(b,end):
+            if d.isoformat()>=opening and (b['id'],d.isoformat()) not in paid:
+                items.append({'kind':'bill','id':b['id'],'name':b['name'],'category':b['category'],'amount':b['amount'],'date':d.isoformat(),'frequency':b['frequency'],'overdue':d<today,'source':'bill'})
+    for t in result['ledger']:
+        if t['kind']=='expense' and today.isoformat()<t['date']<=end.isoformat() and t['date']>=opening:
+            items.append({'kind':'planned','id':t['id'],'name':t['description'],'category':t['category'],'amount':t['amount'],'date':t['date'],'frequency':'none','overdue':False,'source':t['source']})
+    items.sort(key=lambda i:(i['date'],i['name'],i['id']))
+    span=lambda a,b:{'start':a.isoformat(),'end':b.isoformat()}
+    return {'today':today.isoformat(),'items':items,'periods':{'week':span(week,week+timedelta(days=6)),'month':span(month,next_month-timedelta(days=1)),'next_month':span(next_month,end)}}
+
+
+# Every table of user-entered records, children first. Preferences (finance_profile) and cached rates stay.
+RESET_TABLES = ('income_receipts','payments','contributions','income_schedules','transactions','goals','budgets','bills','account')
+
+
+def reset(con, backups, confirm):
+    """Delete all Finance records, after copying the whole workspace database into backups/."""
+    if confirm!='RESET':raise ValueError('Type RESET to confirm deleting all Finance records.')
+    backups.mkdir(parents=True,exist_ok=True)
+    copy=backups/('before-finance-reset-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.db')
+    with closing(sqlite3.connect(copy)) as dest: con.backup(dest)
+    if not con.in_transaction: con.execute('BEGIN IMMEDIATE')
+    deleted={t:con.execute('DELETE FROM finance_'+t).rowcount for t in RESET_TABLES}
+    return {'ok':True,'deleted':deleted,'backup':copy.name}
 
 
 def store_rates(con, snapshot):
@@ -177,6 +216,8 @@ def write(con, payload):
                 raise ValueError('Base currency is locked once financial records exist, to protect historical amounts. No automatic conversion is performed.')
         if 'week_start' in v:choice(v['week_start'],('monday',),'week start')
         if 'period' in v:choice(v['period'],('week','month'),'budget period')
+        if 'buffer' in v:v={**v,'buffer':money(v['buffer'] if v['buffer'] not in ('',None) else '0',v.get('currency',currency),True)}
+        if 'forecast_everyday' in v and not isinstance(v['forecast_everyday'],bool):raise ValueError('Choose whether to include everyday spending.')
         con.execute('INSERT OR REPLACE INTO finance_profile VALUES(1,?)',(encode({**p,**v}),));return {'ok':True}
     if not p['enabled']:raise ValueError('Enable Finance in Settings first.')
     if action in ('account','income-schedule','receive-income','delete-income-schedule'):

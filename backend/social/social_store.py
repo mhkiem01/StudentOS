@@ -4,12 +4,14 @@ Every read/write is authorised here; UI filtering is not a security boundary.
 SQLite is appropriate for a small single-host deployment. All clients must use
 the same host. Keep this repository boundary when moving to a server database.
 """
-import base64,json,sqlite3,uuid,threading,re
+import base64,hashlib,json,math,sqlite3,uuid,threading,re
 from datetime import datetime,timezone
 from pathlib import Path
-import accounts
+import accounts,social_live
 
 LOCK=threading.RLock()
+LIVE=social_live.Hub()  # in-memory calls and instant updates; see social_live.py
+DEFAULT_ROOMS=(('text','general'),('voice','Lounge'))
 class Forbidden(ValueError):pass
 def now():return datetime.now(timezone.utc).isoformat()
 def ident():return uuid.uuid4().hex
@@ -31,7 +33,7 @@ DEFAULT={'enabled':False,'university':'','degree':'','year':'','bio':'','interes
 
 def migrate(path):
     with LOCK,accounts.db(path) as c:
-        if c.execute("SELECT 1 FROM sqlite_master WHERE name='social_profiles'").fetchone():return
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='social_profiles'").fetchone():return upgrade(c)
         folder=Path(path).parent/'backups';folder.mkdir(exist_ok=True)
         dest=sqlite3.connect(folder/('before-socialise-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.db'))
         try:c.backup(dest)
@@ -56,6 +58,27 @@ def migrate(path):
         CREATE INDEX social_activity_space ON social_activity(space_id,created_at);
         CREATE INDEX social_notice_user ON social_notifications(user_id,read);
         COMMIT;'''.replace('CREATE TABLE ','CREATE TABLE IF NOT EXISTS ').replace('CREATE INDEX ','CREATE INDEX IF NOT EXISTS '))
+        upgrade(c)
+
+def upgrade(c):
+    """Additive upgrades: text/call rooms in groups (old messages show in each group's first text room),
+    message attachments (cards such as a shared note), live note shares and task log details."""
+    columns=lambda:{r[1] for r in c.execute('PRAGMA table_info(social_messages)')}
+    logged=lambda:{r[1] for r in c.execute('PRAGMA table_info(social_activity)')}
+    have=lambda name:bool(c.execute("SELECT 1 FROM sqlite_master WHERE name=?",(name,)).fetchone())
+    if have('social_rooms') and have('social_note_shares') and {'room_id','attachment'}<=columns() and 'data' in logged():return
+    c.execute('BEGIN IMMEDIATE')
+    c.execute('CREATE TABLE IF NOT EXISTS social_rooms(id TEXT PRIMARY KEY,space_id TEXT NOT NULL REFERENCES social_spaces(id) ON DELETE CASCADE,kind TEXT NOT NULL,name TEXT NOT NULL,position INTEGER NOT NULL,created_at TEXT NOT NULL)')
+    c.execute('CREATE INDEX IF NOT EXISTS social_room_space ON social_rooms(space_id,position)')
+    if 'room_id' not in {r[1] for r in c.execute('PRAGMA table_info(social_messages)')}:
+        c.execute('ALTER TABLE social_messages ADD COLUMN room_id TEXT REFERENCES social_rooms(id) ON DELETE CASCADE')
+    c.execute('CREATE INDEX IF NOT EXISTS social_message_room ON social_messages(room_id,created_at)')
+    if 'attachment' not in columns():c.execute('ALTER TABLE social_messages ADD COLUMN attachment TEXT')
+    # A note stays in its owner's workspace; this records who it is shared with and how.
+    c.execute('CREATE TABLE IF NOT EXISTS social_note_shares(id TEXT PRIMARY KEY,owner TEXT NOT NULL REFERENCES users(id),note_id TEXT NOT NULL,recipient TEXT NOT NULL REFERENCES users(id),permission TEXT NOT NULL,request TEXT,saved_subject TEXT,saved_topic TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(owner,note_id,recipient))')
+    c.execute('CREATE INDEX IF NOT EXISTS social_note_share_recipient ON social_note_shares(recipient)')
+    if 'data' not in logged():c.execute('ALTER TABLE social_activity ADD COLUMN data TEXT')
+    c.execute('COMMIT')
 
 def profile(c,u):
     r=c.execute('SELECT data FROM social_profiles WHERE user_id=?',(u,)).fetchone()
@@ -70,11 +93,40 @@ def space(c,s,u,manage=False):
 def notify(c,u,kind,body,target=''):
     p=profile(c,u)
     if p['notifications'] and p.get('notify_'+kind,True):c.execute('INSERT INTO social_notifications(id,user_id,kind,body,target,created_at) VALUES(?,?,?,?,?,?)',(ident(),u,kind,body,target,now()))
-def activity(c,s,u,kind,body,task=None):c.execute('INSERT INTO social_activity VALUES(?,?,?,?,?,?,?)',(ident(),s,u,kind,body,task,now()))
+def activity(c,s,u,kind,body,task=None,details=None):c.execute('INSERT INTO social_activity(id,space_id,actor,kind,body,task_id,created_at,data) VALUES(?,?,?,?,?,?,?,?)',(ident(),s,u,kind,body,task,now(),encode(details) if details else None))
+def task_positions(c,s):
+    """Board order: a task's saved position, or its creation order for tasks made before ordering existed."""
+    out={}
+    for i,r in enumerate(c.execute('SELECT id,data FROM social_tasks WHERE space_id=? ORDER BY rowid',(s,)).fetchall()):
+        p=json.loads(r['data']).get('position');out[r['id']]=p if isinstance(p,(int,float)) and not isinstance(p,bool) else float(i)
+    return out
+def log_status(c,s,u,key,title,before,after):
+    """Record a status change as its own log entry: moved, or completed when it reaches Done."""
+    done=after=='done'
+    activity(c,s,u,'task_done' if done else 'task_status',('Completed task: ' if done else 'Moved task: ')+title+' · '+before+' → '+after,key,{'title':title,'from':before,'to':after})
 def audience(c,s):return [r[0] for r in c.execute("SELECT user_id FROM social_members WHERE space_id=? AND state='active'",(s,))]
 def announce(c,s,u,kind,body):
     for recipient in audience(c,s):
         if recipient!=u and not blocked(c,u,recipient):notify(c,recipient,kind,body,s)
+def hexid(v,label='ID'):
+    if not isinstance(v,str) or not re.fullmatch(r'[a-f0-9]{32}',v):raise ValueError('Invalid '+label+'.')
+    return v
+def rooms(c,s):
+    """A group's rooms in order. Every group starts with # general and the Lounge call room."""
+    rows=[dict(r) for r in c.execute('SELECT id,kind,name,position FROM social_rooms WHERE space_id=? ORDER BY position,created_at',(s,))]
+    if rows:return rows
+    for i,(kind,name) in enumerate(DEFAULT_ROOMS):
+        c.execute('INSERT OR IGNORE INTO social_rooms VALUES(?,?,?,?,?,?)',(hashlib.sha256(('room:'+s+':'+kind).encode()).hexdigest()[:32],s,kind,name,i,now()))
+    return [dict(r) for r in c.execute('SELECT id,kind,name,position FROM social_rooms WHERE space_id=? ORDER BY position,created_at',(s,))]
+def text_room(c,s,room=None):
+    texts=[r for r in rooms(c,s) if r['kind']=='text']
+    chosen=next((r for r in texts if r['id']==room),None) if room else texts[0]
+    if not chosen:raise ValueError('That text room no longer exists.')
+    return chosen,chosen['id']==texts[0]['id']
+def dm_allowed(c,u,v):
+    target(c,u,v);policy=profile(c,v)['dm']
+    shared=c.execute("SELECT 1 FROM social_members a JOIN social_members b ON a.space_id=b.space_id JOIN social_spaces s ON a.space_id=s.id WHERE a.user_id=? AND b.user_id=? AND a.state='active' AND b.state='active' AND s.kind!='dm'",(u,v)).fetchone()
+    if policy=='nobody' or not (friends(c,u,v) or policy=='members' and shared):raise Forbidden('Direct messaging is not allowed by this person’s privacy settings.')
 def target(c,u,v):
     r=c.execute('SELECT id FROM users WHERE id=? AND disabled=0',(v,)).fetchone()
     if not r or u==v or blocked(c,u,v) or not profile(c,v)['enabled']:raise Forbidden('This person is not available.')
@@ -104,17 +156,20 @@ def state(path,u,query=None):
         links=[dict(r) for r in c.execute('SELECT * FROM social_links WHERE sender=? OR recipient=?',(u,u)) if not blocked(c,r['sender'],r['recipient'])]
         ids={u}|{r['sender'] for r in links}|{r['recipient'] for r in links}
         spaces=[]
-        for raw in c.execute('SELECT * FROM social_spaces ORDER BY created_at DESC'):
+        for raw in c.execute('SELECT * FROM social_spaces ORDER BY created_at DESC').fetchall():
             if not visible_space(c,raw,u) and not c.execute("SELECT 1 FROM social_members WHERE space_id=? AND user_id=? AND state='invited'",(raw['id'],u)).fetchone():continue
             r=dict(raw);r['data']=json.loads(r['data']);m=member(c,r['id'],u);r['joined']=bool(m)
             r['membership']=dict(c.execute('SELECT * FROM social_members WHERE space_id=? AND user_id=?',(r['id'],u)).fetchone() or {})
-            r['count']=len(audience(c,r['id']));r['members']=[];r['tasks']=[];r['activity']=[];r['files']=[]
+            r['count']=len(audience(c,r['id']));r['members']=[];r['tasks']=[];r['activity']=[];r['files']=[];r['rooms']=[];r['calls']={}
             if m:
+                r['rooms']=rooms(c,r['id']) if r['kind']!='dm' else []
+                r['calls']=LIVE.presence([x['id'] for x in r['rooms'] if x['kind']=='voice'] if r['kind']!='dm' else [r['id']])
                 r['members']=[dict(x) for x in c.execute('SELECT * FROM social_members WHERE space_id=?',(r['id'],)) if x['state']=='active' or r['owner']==u or x['user_id']==u]
                 ids|={x['user_id'] for x in r['members']}
                 if r['kind']=='project':
-                    r['tasks']=[{**dict(x),'data':json.loads(x['data'])} for x in c.execute('SELECT * FROM social_tasks WHERE space_id=?',(r['id'],))]
-                    r['activity']=[dict(x) for x in c.execute('SELECT * FROM social_activity WHERE space_id=? ORDER BY created_at DESC LIMIT 200',(r['id'],))]
+                    order=task_positions(c,r['id'])
+                    r['tasks']=[{**dict(x),'data':{**json.loads(x['data']),'position':order[x['id']]}} for x in c.execute('SELECT * FROM social_tasks WHERE space_id=? ORDER BY rowid',(r['id'],))]
+                    r['activity']=[{**dict(x),'data':json.loads(x['data']) if x['data'] else {}} for x in c.execute('SELECT * FROM social_activity WHERE space_id=? ORDER BY created_at DESC,rowid DESC LIMIT 400',(r['id'],))]
                     r['files']=[dict(x) for x in c.execute('SELECT id,space_id,author,name,description,created_at FROM social_files WHERE space_id=?',(r['id'],))]
                     r['contributions']=[dict(x) for x in c.execute('SELECT actor,COUNT(*) AS actions FROM social_activity WHERE space_id=? GROUP BY actor',(r['id'],))]
                     ids|={x['actor'] for x in r['activity']}
@@ -133,14 +188,23 @@ def state(path,u,query=None):
         result.update(people=people,links=links,spaces=spaces,posts=posts[:100],events=events,users=[public(c,v,u) for v in ids if not blocked(c,u,v)],notifications=[dict(r) for r in c.execute('SELECT * FROM social_notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 200',(u,))],blocks=[r[0] for r in c.execute('SELECT target FROM social_blocks WHERE user_id=?',(u,))])
         return result
 
-def messages(path,u,s):
+def messages(path,u,s,room=None):
     with accounts.db(path) as c:
         if not profile(c,u)['enabled']:raise Forbidden('Enable Socialise in Settings.')
-        space(c,s,u)
-        rows=[dict(r) for r in c.execute('SELECT * FROM social_messages WHERE space_id=? ORDER BY created_at DESC LIMIT 200',(s,)) if not blocked(c,u,r['author'])]
-        return {'messages':list(reversed(rows))}
+        if space(c,s,u)['kind']=='dm':query,args='space_id=?',(s,)
+        else:
+            chosen,first=text_room(c,s,room and hexid(room,'room'))
+            # Messages saved before rooms existed belong to the group's first text room.
+            query,args=('space_id=? AND (room_id=? OR room_id IS NULL)' if first else 'space_id=? AND room_id=?'),(s,chosen['id']);room=chosen['id']
+        rows=[dict(r) for r in c.execute('SELECT * FROM social_messages WHERE '+query+' ORDER BY created_at DESC LIMIT 200',args) if not blocked(c,u,r['author'])]
+        return {'messages':list(reversed(rows)),'room':room}
 
 def write(path,u,payload):
+    after=[];result=_write(path,u,payload,after)
+    for task in after:task()
+    return result
+
+def _write(path,u,payload,after):
     migrate(path);action=payload.get('action');d=payload.get('data') or {};key=payload.get('id') or None;stamp=now()
     if key is not None and (not isinstance(key,str) or not re.fullmatch(r'[a-f0-9]{32}',key)):
         raise ValueError('Invalid Socialise record ID.')
@@ -153,7 +217,7 @@ def write(path,u,payload):
                     p[k]=d[k]
             for k in ('university','degree','year','bio','interests'):
                 if k in d:p[k]=text(d[k],500)
-            for k in ('friend_request','friend_accepted','message','club','study','project','task','event'):
+            for k in ('friend_request','friend_accepted','message','call','note','club','study','project','task','event'):
                 if 'notify_'+k in d:p['notify_'+k]=bool(d['notify_'+k])
             if 'subjects' in d:
                 if not isinstance(d['subjects'],list) or len(d['subjects'])>30:raise ValueError('Choose at most 30 public subject labels.')
@@ -181,6 +245,8 @@ def write(path,u,payload):
             if d.get('remove'):c.execute('DELETE FROM social_blocks WHERE user_id=? AND target=?',(u,v))
             else:
                 target(c,u,v);c.execute('INSERT OR IGNORE INTO social_blocks VALUES(?,?)',(u,v));c.execute('DELETE FROM social_links WHERE (sender=? AND recipient=?) OR (sender=? AND recipient=?)',(u,v,v,u))
+                dm=c.execute("SELECT id FROM social_spaces WHERE kind='dm' AND name=?",('dm:'+':'.join(sorted([u,v])),)).fetchone()
+                if dm:after.append(lambda:LIVE.end(dm[0],'blocked'))
         elif action=='space':
             previous=space(c,key,u,True) if key else None
             kind=previous['kind'] if previous else choice(d.get('kind'),('club','study','project','chat'))
@@ -204,7 +270,7 @@ def write(path,u,payload):
                 c.execute("UPDATE social_members SET state='active' WHERE space_id=? AND user_id=?",(key,u))
             elif op=='leave':
                 if r['owner']==u:raise ValueError('Transfer ownership before leaving.')
-                c.execute('DELETE FROM social_members WHERE space_id=? AND user_id=?',(key,u))
+                c.execute('DELETE FROM social_members WHERE space_id=? AND user_id=?',(key,u));after.append(lambda:LIVE.kick(key,u))
             else:
                 space(c,key,u,True)
                 if op=='invite':
@@ -217,16 +283,14 @@ def write(path,u,payload):
                     else:c.execute('DELETE FROM social_members WHERE space_id=? AND user_id=?',(key,v))
                 elif op=='remove':
                     if v==r['owner']:raise ValueError('Cannot remove the owner.')
-                    c.execute('DELETE FROM social_members WHERE space_id=? AND user_id=?',(key,v))
+                    c.execute('DELETE FROM social_members WHERE space_id=? AND user_id=?',(key,v));after.append(lambda:LIVE.kick(key,v))
                 elif op in ('role','transfer'):
                     if not member(c,key,v):raise ValueError('Choose an active member.')
                     if op=='transfer':c.execute('UPDATE social_spaces SET owner=? WHERE id=?',(v,key))
                     else:c.execute('UPDATE social_members SET role=? WHERE space_id=? AND user_id=?',(text(d.get('role'),60),key,v))
                 else:raise ValueError('Invalid membership operation.')
         elif action=='dm':
-            v=d.get('user_id');target(c,u,v);policy=profile(c,v)['dm']
-            shared=c.execute("SELECT 1 FROM social_members a JOIN social_members b ON a.space_id=b.space_id JOIN social_spaces s ON a.space_id=s.id WHERE a.user_id=? AND b.user_id=? AND a.state='active' AND b.state='active' AND s.kind!='dm'",(u,v)).fetchone()
-            if policy=='nobody' or not (friends(c,u,v) or policy=='members' and shared):raise Forbidden('Direct messaging is not allowed by this person’s privacy settings.')
+            v=d.get('user_id');dm_allowed(c,u,v)
             name='dm:'+':'.join(sorted([u,v]));r=c.execute("SELECT id FROM social_spaces WHERE kind='dm' AND name=?",(name,)).fetchone();key=r[0] if r else ident()
             if not r:
                 c.execute('INSERT INTO social_spaces VALUES(?,?,?,?,?,?)',(key,'dm',u,name,'{}',stamp))
@@ -234,14 +298,40 @@ def write(path,u,payload):
         elif action=='message':
             s=space(c,key,u);body=text(d.get('body'),5000)
             if not body:raise ValueError('Enter a message.')
+            room=None
             if s['kind']=='dm':
                 for v in audience(c,key):
                     if v!=u:
-                        target(c,u,v);policy=profile(c,v)['dm']
-                        shared=c.execute("SELECT 1 FROM social_members a JOIN social_members b ON a.space_id=b.space_id JOIN social_spaces s ON a.space_id=s.id WHERE a.user_id=? AND b.user_id=? AND a.state='active' AND b.state='active' AND s.kind!='dm'",(u,v)).fetchone()
-                        if policy=='nobody' or not (friends(c,u,v) or policy=='members' and shared):raise Forbidden('Direct messaging is no longer allowed.')
-            c.execute('INSERT INTO social_messages VALUES(?,?,?,?,?)',(ident(),key,u,body,stamp));announce(c,key,u,'message','New message in '+('your conversation' if s['kind']=='dm' else s['name']))
-        elif action=='message_delete':c.execute('DELETE FROM social_messages WHERE id=? AND author=?',(key,u))
+                        try:dm_allowed(c,u,v)
+                        except Forbidden:raise Forbidden('Direct messaging is no longer allowed.')
+            else:room=text_room(c,key,d.get('room_id') and hexid(d.get('room_id'),'room'))[0]['id']
+            c.execute('INSERT INTO social_messages(id,space_id,author,body,created_at,room_id) VALUES(?,?,?,?,?,?)',(ident(),key,u,body,stamp,room));announce(c,key,u,'message','New message in '+('your conversation' if s['kind']=='dm' else s['name']))
+            members=audience(c,key);after.append(lambda:LIVE.post(members,{'type':'message','space':key,'room':room}))
+        elif action=='message_delete':
+            r=c.execute('SELECT space_id,room_id FROM social_messages WHERE id=? AND author=?',(key,u)).fetchone()
+            c.execute('DELETE FROM social_messages WHERE id=? AND author=?',(key,u))
+            if r:members=audience(c,r['space_id']);after.append(lambda:LIVE.post(members,{'type':'message','space':r['space_id'],'room':r['room_id']}))
+        elif action in ('room','room_delete'):
+            s=space(c,key,u,True)
+            if s['kind']=='dm':raise ValueError('Direct conversations do not have rooms.')
+            existing=rooms(c,key);room=next((r for r in existing if r['id']==d.get('room_id')),None)
+            if d.get('room_id') and not room:raise ValueError('That room no longer exists.')
+            if action=='room':
+                name=text(d.get('name'),60)
+                if not name:raise ValueError('Enter a room name.')
+                if room:c.execute('UPDATE social_rooms SET name=? WHERE id=?',(name,room['id']))
+                else:
+                    if len(existing)>=30:raise ValueError('A group can have up to 30 rooms.')
+                    c.execute('INSERT INTO social_rooms VALUES(?,?,?,?,?,?)',(ident(),key,choice(d.get('kind'),('text','voice')),name,max(r['position'] for r in existing)+1,stamp))
+            else:
+                if not room:raise ValueError('Choose a room to delete.')
+                texts=[r for r in existing if r['kind']=='text']
+                if room['kind']=='text':
+                    if len(texts)==1:raise ValueError('A group needs at least one text room.')
+                    if room['id']==texts[0]['id']:c.execute('DELETE FROM social_messages WHERE space_id=? AND room_id IS NULL',(key,))
+                c.execute('DELETE FROM social_rooms WHERE id=?',(room['id'],))
+                if room['kind']=='voice':after.append(lambda:LIVE.end(room['id'],'deleted'))
+            members=audience(c,key);after.append(lambda:LIVE.post(members,{'type':'rooms','space':key}))
         elif action=='read':
             if key:c.execute('UPDATE social_notifications SET read=1 WHERE user_id=? AND (id=? OR target=?)',(u,key,key))
             else:c.execute('UPDATE social_notifications SET read=1 WHERE user_id=?',(u,))
@@ -300,16 +390,39 @@ def write(path,u,payload):
             checklist=[{'text':text(v.get('text'),200),'done':bool(v.get('done'))} for v in checklist]
             data={'description':text(d.get('description',''),3000),'status':status,'priority':choice(d.get('priority','medium'),('low','medium','high','urgent')),'due':date(d.get('due')),'assigned':assigned,'checklist':checklist}
             old=json.loads(previous['data']) if previous else {};key=key or ident()
+            data.update({k:old[k] for k in ('created_by','position') if k in old} if previous else {'created_by':u,'position':max(task_positions(c,s).values(),default=-1.0)+1})
             if previous:
                 if old==data and title==previous['title']:return {'ok':True,'id':key}
                 c.execute('UPDATE social_tasks SET title=?,data=?,updated_at=? WHERE id=?',(title,encode(data),stamp,key))
             else:c.execute('INSERT INTO social_tasks VALUES(?,?,?,?,?)',(key,s,title,encode(data),stamp))
-            changes=('Created task' if not previous else 'Updated task')+': '+title
-            if old.get('status')!=status:changes+=' · '+old.get('status','new')+' → '+status
-            if old.get('checklist')!=checklist:changes+=' · checklist '+str(sum(x['done'] for x in checklist))+'/'+str(len(checklist))
-            activity(c,s,u,'task',changes,key)
+            fields=[label for name,label in (('description','description'),('priority','priority'),('due','due date'),('assigned','assignees'),('checklist','checklist')) if previous and old.get(name)!=data[name]]+(['title'] if previous and title!=previous['title'] else [])
+            if not previous:activity(c,s,u,'task_created','Created task: '+title,key,{'title':title,'to':status})
+            elif old.get('status')!=status:log_status(c,s,u,key,title,old.get('status','todo'),status)
+            if previous and fields:activity(c,s,u,'task_updated','Updated task: '+title+' · '+', '.join(fields),key,{'title':title,'fields':fields})
             for v in assigned:
                 if v!=u and (v not in old.get('assigned',[]) or status!=old.get('status')):notify(c,v,'task','Task '+status+': '+title,s)
+        elif action=='task_move':
+            # Dragging a card: only its column (status) and place in the column change.
+            previous=c.execute('SELECT * FROM social_tasks WHERE id=?',(key,)).fetchone()
+            if not previous:raise ValueError('This task no longer exists. Refresh the board.')
+            s=previous['space_id'];room=space(c,s,u);status=choice(d.get('status'),('todo','in_progress','review','done'))
+            if status=='review' and not room['data'].get('review',True):raise ValueError('Review is disabled for this project.')
+            position=d.get('position')
+            if isinstance(position,bool) or not isinstance(position,(int,float)) or not math.isfinite(position) or abs(position)>1e12:raise ValueError('Invalid board position.')
+            data=json.loads(previous['data']);before=data.get('status','todo');data.update(status=status,position=float(position))
+            c.execute('UPDATE social_tasks SET data=?,updated_at=? WHERE id=?',(encode(data),stamp,key))
+            if before!=status:
+                log_status(c,s,u,key,previous['title'],before,status)
+                for v in data.get('assigned',[]):
+                    if v!=u:notify(c,v,'task','Task '+status+': '+previous['title'],s)
+        elif action=='task_delete':
+            previous=c.execute('SELECT * FROM social_tasks WHERE id=?',(key,)).fetchone()
+            if not previous:raise ValueError('This task no longer exists. Refresh the board.')
+            s=previous['space_id'];room=space(c,s,u);data=json.loads(previous['data'])
+            creator=data.get('created_by') or (c.execute("SELECT actor FROM social_activity WHERE task_id=? AND kind IN ('task','task_created') ORDER BY created_at LIMIT 1",(key,)).fetchone() or [None])[0]
+            if u not in (room['owner'],creator):raise Forbidden('Only the project owner or the person who created this task can delete it.')
+            c.execute('DELETE FROM social_tasks WHERE id=?',(key,))
+            activity(c,s,u,'task_deleted','Deleted task: '+previous['title'],key,{'title':previous['title'],'from':data.get('status','todo')})
         elif action=='file':
             room=space(c,key,u)
             if room['kind']!='project':raise ValueError('Files belong to projects.')
@@ -324,6 +437,44 @@ def write(path,u,payload):
             c.execute('INSERT INTO social_files VALUES(?,?,?,?,?,?,?)',(ident(),key,u,name,text(d.get('description',''),500),blob,stamp));activity(c,key,u,'file','Uploaded '+name)
         else:raise ValueError('Unknown Socialise action.')
         return {'ok':True,'id':key}
+
+def call(path,u,payload):
+    """Join, leave and run calls. Group calls happen in call rooms; direct calls ring the other person."""
+    op=payload.get('op')
+    with accounts.db(path) as c:
+        if not profile(c,u)['enabled']:raise Forbidden('Enable Socialise in Settings first.')
+        if op=='join':
+            s=space(c,hexid(payload.get('space'),'conversation'),u)
+            if s['kind']=='dm':
+                others=[v for v in audience(c,s['id']) if v!=u]
+                for v in others:dm_allowed(c,u,v)
+                joined=LIVE.join(s['id'],u,s['id'],None,'dm',audience(c,s['id']))
+                if payload.get('ring') and others and LIVE.ring(u,joined['peer'],others[0],bool(payload.get('video'))):
+                    name=c.execute('SELECT display_name FROM users WHERE id=?',(u,)).fetchone()[0]
+                    notify(c,others[0],'call',name+(' video called you.' if payload.get('video') else ' called you.'),s['id'])
+                return joined
+            room=next((r for r in rooms(c,s['id']) if r['id']==payload.get('room') and r['kind']=='voice'),None)
+            if not room:raise ValueError('That call room no longer exists.')
+            return LIVE.join(room['id'],u,s['id'],room['id'],'room',audience(c,s['id']))
+        if op=='decline':LIVE.decline(u,hexid(payload.get('call'),'call'));return {'ok':True}
+        peer=hexid(payload.get('peer'),'call connection')
+        if op=='leave':LIVE.leave(u,peer);return {'ok':True}
+        try:info=LIVE.info(u,peer)
+        except social_live.Ended as exc:raise Forbidden(str(exc))
+        space(c,info['space'],u)  # still a member of the group or conversation
+    if op=='signal':LIVE.signal(u,peer,payload.get('messages'))
+    elif op=='media':LIVE.media(u,peer,payload.get('media'))
+    elif op=='watch':return {'watch':LIVE.watch(u,peer,payload.get('action'),payload)}
+    else:raise ValueError('Unknown call action.')
+    return {'ok':True}
+
+def live(path,u,cursor=None,peer=None,epoch=None,timeout=social_live.WAIT):
+    """Long-poll for instant updates. Without a cursor (or after a server restart) returns a fresh starting point."""
+    with accounts.db(path) as c:
+        if not profile(c,u)['enabled']:raise Forbidden('Enable Socialise in Settings first.')
+    if peer is not None:hexid(peer,'call connection')
+    if cursor is None or epoch!=LIVE.epoch:return LIVE.snapshot(u)
+    return LIVE.wait(u,cursor,timeout,peer)
 
 def download(path,u,key):
     with accounts.db(path) as c:
